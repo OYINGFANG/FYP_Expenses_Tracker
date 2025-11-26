@@ -1,0 +1,27 @@
+# --- Global junk ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Node / JS ---
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Expo / React Native / build outputs ---
+**/.expo/
+**/.expo-shared/
+dist/
+build/
+frontend/android/app/build/
+frontend/ios/build/
+frontend/ios/Pods/
+
+# --- Backend secrets ---
+backend/.env
+backend/auri-76581-firebase-adminsdk-fbsvc-1122c9b7d7.json
+
+# --- Large media we DO NOT want in git ---
+frontend/assets/images/test.png
+frontend/assets/images/vid4.mp4

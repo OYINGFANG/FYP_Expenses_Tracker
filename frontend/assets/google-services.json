@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "195907875417",
+    "firebase_url": "https://auri-76581-default-rtdb.firebaseio.com",
+    "project_id": "auri-76581",
+    "storage_bucket": "auri-76581.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:195907875417:android:64feaf46011b00663cf748",
+        "android_client_info": {
+          "package_name": "com.yingfang_0710.Auri"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtjSelSfDpNvmDiW4lG8G40ayrcw0O734"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
