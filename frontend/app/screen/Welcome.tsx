@@ -14,7 +14,7 @@ export default function SignIn() {
 
   return (
     <ImageBackground
-      source={require("@/assets/images/aurilanding.png")}
+      source={require("@/assets/images/welcome.png")}
       style={styles.background}
       resizeMode="cover"
     >
@@ -53,7 +53,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "transparent",
     height: 60,
-    marginLeft: -20,
+    marginLeft: -15,
+    marginTop: 25,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -61,11 +62,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "transparent",
     borderRadius: 25,
-    height: 50,
+    height: 60,
     justifyContent: "center",
     alignItems: "center",
-    marginLeft: 30,
-    marginTop: 5,
+    marginLeft: 50,
+    marginTop: 25,
   },
   loginText: {
     color: "white",   

@@ -35,12 +35,24 @@ export const getLocalPrices = (location: string, numTurns: number): { [key: stri
   const daysInYear = dateConfig.numDaysInSeason * 4;
   const season = Math.floor((numTurns % daysInYear) / dateConfig.numDaysInSeason);
   const prices: { [key: string]: Price } = {};
-  const normalizedLocation = String(location).toLowerCase();
+  // Normalize location to match Locations enum format (lowercase, trimmed)
+  const normalizedLocation = String(location).toLowerCase().trim();
+  
+  console.log('[getLocalPrices] Looking for location:', normalizedLocation, 'season:', season);
 
   (Object.values(itemsData) as Product[]).forEach((item) => {
     const { itemId, volume, weight, prices: itemPrices } = item;
     const price = itemPrices.find(
-      (p) => p.locations.map((loc) => String(loc).toLowerCase()).includes(normalizedLocation) && p.seasons.includes(season)
+      (p) => {
+        const locationMatches = p.locations
+          .map((loc) => String(loc).toLowerCase().trim())
+          .includes(normalizedLocation);
+        const seasonMatches = p.seasons.includes(season);
+        if (locationMatches && !seasonMatches) {
+          console.log(`[getLocalPrices] Item ${itemId} location matches but season doesn't. Item locations:`, p.locations.map(l => String(l)), 'seasons:', p.seasons);
+        }
+        return locationMatches && seasonMatches;
+      }
     );
     if (price) {
       const value = getRandRange(price.priceMin, price.priceMax);
@@ -54,9 +66,11 @@ export const getLocalPrices = (location: string, numTurns: number): { [key: stri
         weight,
         guildDiscount: price.guildDiscount,
       };
+      console.log(`[getLocalPrices] Added item ${itemId} with price ${value}, qty ${qty}`);
     }
   });
 
+  console.log('[getLocalPrices] Total items found:', Object.keys(prices).length);
   return prices;
 };
 

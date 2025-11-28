@@ -37,11 +37,12 @@ const TravelModal: React.FC<Props> = ({
   travelTransitionStatus,
 }) => {
   const [isInitted, setIsInitted] = useState(false);
-  const [scaleAnim] = useState(new Animated.Value(0));
-  const [opacityAnim] = useState(new Animated.Value(0));
+  const [scaleAnim] = useState(new Animated.Value(1));
+  const [opacityAnim] = useState(new Animated.Value(1));
   const { formatMessage } = useIntl();
   const isOpening = ['opening', 'open'].includes(travelModalStatus) && isInitted;
-  const showCard = travelTransitionStatus !== 'off';
+  // Show card if modal is visible
+  const showCard = travelModalStatus !== '';
   const visible = travelModalStatus !== '';
 
   useEffect(() => {
@@ -49,7 +50,10 @@ const TravelModal: React.FC<Props> = ({
   }, []);
 
   useEffect(() => {
-    if (isOpening) {
+    if (travelModalStatus === 'opening') {
+      // Start from 0 and animate to 1 when opening
+      scaleAnim.setValue(0);
+      opacityAnim.setValue(0);
       Animated.parallel([
         Animated.timing(scaleAnim, {
           toValue: 1,
@@ -62,7 +66,11 @@ const TravelModal: React.FC<Props> = ({
           useNativeDriver: true,
         }),
       ]).start();
-    } else {
+    } else if (travelModalStatus === 'open') {
+      // Ensure fully visible when open
+      scaleAnim.setValue(1);
+      opacityAnim.setValue(1);
+    } else if (travelModalStatus === 'closing') {
       Animated.parallel([
         Animated.timing(scaleAnim, {
           toValue: 0.5,
@@ -76,9 +84,10 @@ const TravelModal: React.FC<Props> = ({
         }),
       ]).start();
     }
-  }, [isOpening, scaleAnim, opacityAnim]);
+  }, [travelModalStatus, scaleAnim, opacityAnim]);
 
-  const cardOpacity = travelTransitionStatus !== 'closing' ? 1 : 0;
+  // Card wrapper should always be visible when modal is open
+  const cardOpacity = travelModalStatus === 'closing' ? 0 : 1;
 
   return (
     <RNModal
@@ -104,13 +113,8 @@ const TravelModal: React.FC<Props> = ({
           testID="travel-modal-card-wrap"
         >
           {showCard && (
-            <Animated.View
-              style={[
-                styles.card,
-                {
-                  opacity: opacityAnim,
-                },
-              ]}
+            <View
+              style={styles.card}
               testID="travel-modal-card"
             >
               <LinearGradient colors={['#D97706', '#B45309']} style={styles.header}>
@@ -121,71 +125,91 @@ const TravelModal: React.FC<Props> = ({
 
               <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
                 <View style={styles.content}>
-                  <Text style={styles.dayNumText}>
-                    <FormattedMessage
-                      id="travel__modal__day_num"
-                      values={{ dayNum: travelState.progress, maxDays: travelState.routeDays }}
-                    />
-                  </Text>
-
-                  <View style={styles.diceContainer}>
-                    <View style={styles.dieWrapper}>
-                      <DieOneDSix value={travelState.dice.encounterCheck1} idx={0} />
-                    </View>
-                    <View style={styles.dieWrapper}>
-                      <DieOneDSix value={travelState.dice.encounterCheck2} idx={1} />
-                    </View>
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.dayNumText}>
+                      <FormattedMessage
+                        id="travel__modal__day_num"
+                        values={{ 
+                          dayNum: travelState.progress || 1, 
+                          maxDays: travelState.routeDays || 1 
+                        }}
+                      />
+                    </Text>
                   </View>
 
-                  <Animated.View
-                    style={[
-                      styles.dangerContainer,
-                      {
-                        opacity: travelTransitionStatus === '' ? 1 : 0,
-                      },
-                    ]}
-                  >
-                    <View style={styles.dangerContent}>
-                      {travelState.danger && (
-                        <View style={styles.iconContainer}>
-                          {getDangerIcon(travelState.danger.type)}
+                  {travelState.progress > 0 && (
+                    <>
+                      <View style={styles.diceContainer}>
+                        <View style={styles.dieWrapper}>
+                          <DieOneDSix value={travelState.dice.encounterCheck1} idx={0} />
                         </View>
-                      )}
-                      {travelState.danger && travelState.upgradeUsed && (
-                        <View style={styles.iconContainer}>
-                          <Ionicons name="shield-checkmark" size={64} color="#10B981" />
+                        <View style={styles.dieWrapper}>
+                          <DieOneDSix value={travelState.dice.encounterCheck2} idx={1} />
                         </View>
-                      )}
-
-                      <View style={styles.dangerTextContainer}>
-                        {!travelState.danger ? (
-                          <Text style={styles.dangerText}>
-                            <FormattedMessage id="travel__modal__danger__none" />
-                          </Text>
-                        ) : (
-                          <View>
-                            <Text style={styles.dangerText}>
-                              <FormattedMessage
-                                id={`travel__modal__danger__${travelState.danger.type}${
-                                  travelState.upgradeUsed ? '_avoided' : ''
-                                }`}
-                              />
-                            </Text>
-                            {!travelState.upgradeUsed &&
-                              travelState.danger.effects.map((dangerEffect) => (
-                                <Text key={dangerEffect.type} style={styles.dangerText}>
-                                  <FormattedMessage
-                                    id={`travel__modal__danger__effect__${dangerEffect.type}__${dangerEffect.severity}`}
-                                  />{' '}
-                                </Text>
-                              ))}
-                          </View>
-                        )}
                       </View>
-                    </View>
-                  </Animated.View>
 
-                  <View style={styles.buttonContainer}>
+                      <Animated.View
+                        style={[
+                          styles.dangerContainer,
+                          {
+                            opacity: travelTransitionStatus === '' ? 1 : 0,
+                          },
+                        ]}
+                      >
+                        <View style={styles.dangerContent}>
+                          {travelState.danger && (
+                            <View style={styles.iconContainer}>
+                              {getDangerIcon(travelState.danger.type)}
+                            </View>
+                          )}
+                          {travelState.danger && travelState.upgradeUsed && (
+                            <View style={styles.iconContainer}>
+                              <Ionicons name="shield-checkmark" size={64} color="#10B981" />
+                            </View>
+                          )}
+
+                          <View style={styles.dangerTextContainer}>
+                            {!travelState.danger ? (
+                              <Text style={styles.dangerText}>
+                                <FormattedMessage id="travel__modal__danger__none" />
+                              </Text>
+                            ) : (
+                              <View>
+                                <Text style={styles.dangerText}>
+                                  <FormattedMessage
+                                    id={`travel__modal__danger__${travelState.danger.type}${
+                                      travelState.upgradeUsed ? '_avoided' : ''
+                                    }`}
+                                  />
+                                </Text>
+                                {!travelState.upgradeUsed &&
+                                  travelState.danger.effects.map((dangerEffect) => (
+                                    <Text key={dangerEffect.type} style={styles.dangerText}>
+                                      <FormattedMessage
+                                        id={`travel__modal__danger__effect__${dangerEffect.type}__${dangerEffect.severity}`}
+                                      />{' '}
+                                    </Text>
+                                  ))}
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      </Animated.View>
+                    </>
+                  )}
+
+                  {travelState.progress === 0 && (
+                    <View style={[styles.dangerContainer, { marginBottom: 16 }]}>
+                      <Text style={styles.dangerText}>
+                        <FormattedMessage 
+                          id="travel__modal__ready" 
+                          defaultMessage="Ready to begin your journey? Click Continue to start traveling."
+                        />
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={[styles.buttonContainer, { marginTop: 16 }]}>
                     {travelState.progress < travelState.routeDays && (
                       <View style={styles.buttonSpacer}>
                         <Button
@@ -203,7 +227,7 @@ const TravelModal: React.FC<Props> = ({
                   </View>
                 </View>
               </ScrollView>
-            </Animated.View>
+            </View>
           )}
         </Animated.View>
       </View>
@@ -241,6 +265,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 10,
     overflow: 'hidden',
+    minHeight: 300,
   },
   header: {
     padding: 16,
@@ -254,13 +279,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   body: {
-    flex: 1,
+    maxHeight: 400,
   },
   bodyContent: {
     padding: 24,
   },
   content: {
-    gap: 16,
+    // gap: 16, // May not be supported in all RN versions
   },
   dayNumText: {
     fontSize: 18,

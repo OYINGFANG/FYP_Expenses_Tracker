@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Slices } from '../store/gameSlice';
 import upgradesData from '../data/upgrades';
 import Table from '../common/Table';
@@ -74,19 +74,25 @@ const ToolsPanel = () => {
   const buyTableActions = (id: string) => (
     <View style={styles.tableActions}>
       <View style={styles.actionButtonWrapper}>
-        <Button
+        <TouchableOpacity
           onPress={() => handleInfoClick(id)}
-          label={formatMessage({ id: 'market__buy__table___btn_info', defaultMessage: 'Info' })}
-          variant="secondary"
-        />
+          style={styles.compactButton}
+        >
+          <Text style={styles.compactButtonText}>
+            {formatMessage({ id: 'market__buy__table___btn_info', defaultMessage: 'Info' })}
+          </Text>
+        </TouchableOpacity>
       </View>
       {!gameState.flags[`upgrade__${id}`] && (
-        <Button
+        <TouchableOpacity
           onPress={() => handleBuyUpgrade(id, getUpgradePrice(id))}
-          label={formatMessage({ id: 'market__buy__table___btn_buy', defaultMessage: 'Buy' })}
-          variant="primary"
+          style={[styles.compactButton, styles.compactButtonPrimary]}
           disabled={getUpgradeGuildOnly(id) && !hasGuildMembership}
-        />
+        >
+          <Text style={[styles.compactButtonText, styles.compactButtonTextPrimary]}>
+            {formatMessage({ id: 'market__buy__table___btn_buy', defaultMessage: 'Buy' })}
+          </Text>
+        </TouchableOpacity>
       )}
     </View>
   );
@@ -139,12 +145,39 @@ const styles = StyleSheet.create({
   },
   tableActions: {
     flexDirection: 'row',
-    gap: 16,
     alignItems: 'center',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
+    justifyContent: 'flex-start',
+    width: '100%',
+    flexShrink: 1,
   },
   actionButtonWrapper: {
-    marginRight: 16,
+    marginRight: 8,
+    flexShrink: 0,
+  },
+  compactButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#444',
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 60,
+  },
+  compactButtonPrimary: {
+    backgroundColor: 'orange',
+    borderColor: '#444',
+  },
+  compactButtonText: {
+    color: '#444',
+    fontWeight: 'bold',
+    fontSize: 12,
+    textTransform: 'uppercase',
+  },
+  compactButtonTextPrimary: {
+    color: '#fff',
   },
 });
 

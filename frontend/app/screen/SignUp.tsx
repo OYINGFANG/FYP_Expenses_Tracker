@@ -69,7 +69,9 @@ export default function Register() {
   };
 
   const validateEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
-  const validatePassword = (p: string) => p.length >= 6;
+  // Basic strong password check: at least 8 chars, one uppercase, one lowercase, one digit
+  const validatePassword = (p: string) =>
+    p.length >= 8 && /[A-Z]/.test(p) && /[a-z]/.test(p) && /\d/.test(p);
 
   const handleRegister = async () => {
     // Validation
@@ -82,7 +84,10 @@ export default function Register() {
       return;
     }
     if (!validatePassword(password)) {
-      Alert.alert("Weak Password", "Password must be at least 6 characters long");
+      Alert.alert(
+        "Weak Password",
+        "Password must be at least 8 characters long and include upper, lower case letters and a number."
+      );
       return;
     }
     if (password !== confirmPassword) {
@@ -109,6 +114,7 @@ export default function Register() {
         user_password: password,
         user_gender: gender,
         user_dob: dob ? dob.toISOString() : null,
+        // Mark brand new accounts; can be flipped to 'Active' after onboarding
         accountStatus: "Active",
         onboardingCompleted: false,
         avatarUrl: "",
@@ -179,9 +185,7 @@ export default function Register() {
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Username *</Text>
                 <View style={styles.inputContainer}>
-                  <View style={styles.iconBox}>
-                    <FontAwesome name="user" size={18} color="#355E1C" />
-                  </View>
+                  <FontAwesome name="user" size={28} color="#355E1C" />
                   <TextInput
                     placeholder="Enter your username"
                     placeholderTextColor="#9CA3AF"
@@ -197,13 +201,11 @@ export default function Register() {
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Email Address *</Text>
                 <View style={styles.inputContainer}>
-                  <View style={styles.iconBox}>
-                    <MaterialCommunityIcons
-                      name="email-outline"
-                      size={20}
-                      color="#355E1C"
-                    />
-                  </View>
+                  <MaterialCommunityIcons
+                    name="email"
+                    size={30}
+                    color="#355E1C"
+                  />
                   <TextInput
                     placeholder="Enter your email"
                     placeholderTextColor="#9CA3AF"
@@ -223,19 +225,16 @@ export default function Register() {
                   style={styles.inputContainer}
                   onPress={() => setShowGenderModal(true)}
                 >
-                  <View style={styles.iconBox}>
-                    <Ionicons name="person-outline" size={20} color="#355E1C" />
-                  </View>
+                  <Ionicons name="person-outline" size={30} color="#355E1C" />
                   <Text
                     style={[
                       styles.input,
-                      { paddingVertical: 16 },
                       !gender && { color: "#9CA3AF" },
                     ]}
                   >
                     {gender || "Select your gender"}
                   </Text>
-                  <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+                  <Ionicons name="chevron-down" size={20} color="gray" />
                 </TouchableOpacity>
               </View>
 
@@ -247,19 +246,16 @@ export default function Register() {
                   onPress={() => setShowDatePicker(true)}
                   activeOpacity={0.8}
                 >
-                  <View style={styles.iconBox}>
-                    <Ionicons
-                      name="calendar-outline"
-                      size={20}
-                      color="#355E1C"
-                    />
-                  </View>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={30}
+                    color="#355E1C"
+                  />
 
                   <View style={{ flex: 1 }}>
                     <Text
                       style={[
                         styles.input,
-                        { paddingVertical: 8 },
                         !dob && { color: "#9CA3AF" },
                       ]}
                     >
@@ -278,7 +274,7 @@ export default function Register() {
                           color: isUnder13 ? "#DC2626" : "#6B7280",
                           fontSize: 12,
                           fontWeight: "600",
-                          marginTop: 2,
+                          marginLeft: 10,
                         }}
                       >
                         {ageText} {isUnder13 ? "(Minimum age is 13)" : ""}
@@ -286,7 +282,7 @@ export default function Register() {
                     )}
                   </View>
 
-                  <Ionicons name="chevron-down" size={20} color="#9CA3AF" />
+                  <Ionicons name="chevron-down" size={20} color="gray" />
                 </TouchableOpacity>
 
                 {!!dob && (
@@ -294,7 +290,7 @@ export default function Register() {
                     onPress={() => setDob(null)}
                     style={{ alignSelf: "flex-end", marginTop: 6 }}
                   >
-                    <Text style={{ color: "#6B7280", fontWeight: "600" }}>
+                    <Text style={{ color: "#355E1C", fontWeight: "bold" }}>
                       Clear DOB
                     </Text>
                   </TouchableOpacity>
@@ -305,9 +301,7 @@ export default function Register() {
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Password *</Text>
                 <View style={styles.inputContainer}>
-                  <View style={styles.iconBox}>
-                    <FontAwesome name="lock" size={20} color="#355E1C" />
-                  </View>
+                  <FontAwesome name="lock" size={32} color="#355E1C" />
                   <TextInput
                     placeholder="Create a password (min. 6 characters)"
                     placeholderTextColor="#9CA3AF"
@@ -322,8 +316,8 @@ export default function Register() {
                   >
                     <Ionicons
                       name={showPassword ? "eye-off-outline" : "eye-outline"}
-                      size={20}
-                      color="#9CA3AF"
+                      size={25}
+                      color="gray"
                     />
                   </TouchableOpacity>
                 </View>
@@ -338,9 +332,7 @@ export default function Register() {
               <View style={styles.inputWrapper}>
                 <Text style={styles.label}>Confirm Password *</Text>
                 <View style={styles.inputContainer}>
-                  <View style={styles.iconBox}>
-                    <FontAwesome name="lock" size={20} color="#355E1C" />
-                  </View>
+                  <FontAwesome name="lock" size={32} color="#355E1C" />
                   <TextInput
                     placeholder="Re-enter your password"
                     placeholderTextColor="#9CA3AF"
@@ -361,8 +353,8 @@ export default function Register() {
                           ? "eye-off-outline"
                           : "eye-outline"
                       }
-                      size={20}
-                      color="#9CA3AF"
+                      size={25}
+                      color="gray"
                     />
                   </TouchableOpacity>
                 </View>
@@ -540,9 +532,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
-    paddingHorizontal: 24,
+    paddingHorizontal: 25,
     paddingTop: 20,
-    paddingBottom: 16,
+    paddingBottom: 30,
     width: "100%",
     height: "70%", 
     shadowColor: "#000",
@@ -554,7 +546,7 @@ const styles = StyleSheet.create({
 
   // inner scroll content inside sheet
   formScrollContent: {
-    paddingBottom: 32, // so last element isn't cut off
+    paddingBottom: 32,
   },
 
   handleBar: {
@@ -567,11 +559,10 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: "900",
+    fontWeight: "800",
     color: "#355E1C",
     textAlign: "center",
     marginBottom: 4,
-    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 14,
@@ -582,7 +573,7 @@ const styles = StyleSheet.create({
   },
 
   // Inputs
-  inputWrapper: { marginBottom: 20 },
+  inputWrapper: { marginBottom: 15 },
   label: {
     fontSize: 13,
     fontWeight: "700",
@@ -594,61 +585,45 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#E5E7EB",
-    paddingHorizontal: 12,
-    minHeight: 52,
-  },
-  iconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "#D1FAE5",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
+    backgroundColor: "white",
+    borderRadius: 5,
+    paddingHorizontal: 15,
+    height: 50,
+    borderWidth: 1,
+    borderColor: "gray",
   },
   input: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 16,
+    marginLeft: 10,
+    fontWeight: "bold",
     color: "#111827",
   },
   errorText: {
     fontSize: 12,
     color: "#EF4444",
     marginTop: 4,
+    marginLeft: 15,
     fontWeight: "500",
   },
 
   // Register button
   registerButton: {
     backgroundColor: "#355E1C",
-    borderRadius: 14,
-    height: 56,
+    borderRadius: 10,
+    height: 50,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     columnGap: 8,
     marginTop: 8,
     marginBottom: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: "#355E1C",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: { elevation: 4 },
-    }),
   },
   registerButtonDisabled: { opacity: 0.6 },
   registerButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "bold",
   },
 
   // Footer
@@ -658,8 +633,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  footerText: { color: "#6B7280", fontSize: 14, fontWeight: "500" },
-  link: { color: "#355E1C", fontWeight: "700", fontSize: 14 },
+  footerText: { color: "black", fontSize: 14, fontWeight: "500" },
+  link: { color: "#355E1C", fontWeight: "bold", fontSize: 16 },
 
   // Info box inside sheet
   infoBox: {

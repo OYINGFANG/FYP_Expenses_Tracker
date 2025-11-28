@@ -30,7 +30,7 @@ const ToolInfoModal: React.FC<Props> = ({ selectedItemId, closeInfoModal }) => {
             style={styles.header}
           >
             <View style={styles.headerLeft}>
-              <Ionicons name="construct" size={18} color="#FEF3C7" />
+              <Ionicons name="construct" size={18} color="#FEF3C7" style={{ marginRight: 10 }} />
               <Text style={styles.title}>
                 {selectedItemId ? (
                   <FormattedMessage id={`upgrades__${selectedItemId}__title`} />
@@ -92,6 +92,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 16,
     elevation: 10,
+    minHeight: 300,
   },
   header: {
     flexDirection: 'row',
@@ -102,7 +103,7 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    // gap: 10, // May not be supported in all RN versions
     flex: 1,
   },
   title: {
@@ -115,7 +116,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   body: {
-    flex: 1,
+    maxHeight: 400,
   },
   bodyContent: {
     padding: 24,

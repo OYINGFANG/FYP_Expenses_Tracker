@@ -24,12 +24,17 @@ export type Slices = {
   game: GameSliceState;
 };
 
-const getNewGameData = () => ({
-  ...initGameState,
-  id: `${new Date().getTime()}`,
-  prices: getLocalPrices(String(initGameState.location), 0),
-  capacity: getCapacity({}, {}),
-});
+const getNewGameData = () => {
+  // Normalize location to ensure consistency
+  const normalizedLocation = String(initGameState.location).toLowerCase().trim();
+  return {
+    ...initGameState,
+    id: `${new Date().getTime()}`,
+    location: normalizedLocation,
+    prices: getLocalPrices(normalizedLocation, 0),
+    capacity: getCapacity({}, {}),
+  };
+};
 export const gameSlice = createSlice({
   name: 'game',
   initialState: getInitialState(),
@@ -61,8 +66,26 @@ export const gameSlice = createSlice({
       state.currentModal = action.payload;
     },
     loadSavedGame: (state, action: PayloadAction<GameState>) => {
+      // Normalize location to ensure consistency
+      const normalizedLocation = String(action.payload.location).toLowerCase().trim();
+      // Recalculate prices for the saved location and current turn
+      const newPrices = getLocalPrices(normalizedLocation, action.payload.numTurns);
+      // Recalculate capacity based on saved inventory and flags
+      const newCapacity = getCapacity(action.payload.inventory || {}, action.payload.flags || {});
+      // Recalculate netWealth to ensure it's accurate
+      const newNetWealth = getNetWealth(
+        action.payload.cash || 0,
+        action.payload.savings || 0,
+        action.payload.loans || []
+      );
       state.appStatus = AppStatuses.Game;
-      state.gameState = action.payload;
+      state.gameState = {
+        ...action.payload,
+        location: normalizedLocation,
+        prices: newPrices,
+        capacity: newCapacity,
+        netWealth: newNetWealth,
+      };
       state.gamePanel = GameTabSlugs.Market;
       state.subPanelStatus = 'buy';
       state.modalStatus = 'closed';
@@ -339,8 +362,13 @@ export const gameSlice = createSlice({
     relocate: (state, action: PayloadAction<string>) => {
       // TODO: add bandits
       // TODO: add duration for long treks
-      const newLocation = String(action.payload);
+      // Normalize location to match Locations enum format (lowercase, trimmed)
+      const newLocation = String(action.payload).toLowerCase().trim();
       const newPrices = getLocalPrices(newLocation, state.gameState.numTurns);
+      console.log('[relocate] Old location:', state.gameState.location);
+      console.log('[relocate] New location:', newLocation);
+      console.log('[relocate] Prices count:', Object.keys(newPrices).length);
+      console.log('[relocate] Price items:', Object.keys(newPrices));
       const newGameState: GameState = {
         ...state.gameState,
         prices: newPrices,

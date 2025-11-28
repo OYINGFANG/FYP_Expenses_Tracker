@@ -96,7 +96,7 @@ const BankAmountModal = () => {
 
           <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
             <View style={styles.content} testID={`bank-amount-modal-${currentModal}`}>
-              <View style={styles.inputContainer}>
+              <View style={[styles.inputContainer, { marginBottom: 16 }]}>
                 <TextInput
                   testID="bank-amount-input"
                   style={styles.input}
@@ -107,13 +107,15 @@ const BankAmountModal = () => {
                 />
               </View>
 
-              <Text style={styles.explainer} testID={`explainer-${currentModal}`}>
-                <FormattedMessage
-                  id={`bank__amount_modal__explainer__${currentModal}`}
-                  values={{ maxAmt }}
-                />
-              </Text>
-              <View style={styles.buttonContainer}>
+              <View style={{ marginBottom: 16 }}>
+                <Text style={styles.explainer} testID={`explainer-${currentModal}`}>
+                  <FormattedMessage
+                    id={`bank__amount_modal__explainer__${currentModal}`}
+                    values={{ maxAmt }}
+                  />
+                </Text>
+              </View>
+              <View style={[styles.buttonContainer, { marginTop: 16 }]}>
                 <View style={styles.buttonSpacer}>
                   <Button
                     label={formatMessage({ id: 'cancel', defaultMessage: 'Cancel' })}
@@ -125,17 +127,19 @@ const BankAmountModal = () => {
                   <View style={styles.buttonSpacer}>
                     <Button
                       variant="primary"
-                      label={`${formatMessage({ id: 'max', defaultMessage: 'Max' })}: ${maxAmt}`}
+                      label={formatMessage({ id: 'max', defaultMessage: 'Max: {labelValue}' }, { labelValue: maxAmt })}
                       onPress={() => handleConfirmAmt(maxAmt)}
                     />
                   </View>
                 )}
                 {maxAmt > 0 && numAmt > 0 && (
-                  <Button
-                    variant="primary"
-                    label={formatMessage({ id: 'ok', defaultMessage: 'OK' })}
-                    onPress={() => handleConfirmAmt(numAmt)}
-                  />
+                  <View style={styles.buttonSpacer}>
+                    <Button
+                      variant="primary"
+                      label={formatMessage({ id: 'ok', defaultMessage: 'OK' })}
+                      onPress={() => handleConfirmAmt(numAmt)}
+                    />
+                  </View>
                 )}
               </View>
             </View>
@@ -165,6 +169,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 16,
     elevation: 10,
+    minHeight: 300,
   },
   header: {
     flexDirection: 'row',
@@ -188,16 +193,16 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   body: {
-    flex: 1,
+    maxHeight: 400,
   },
   bodyContent: {
     padding: 24,
   },
   content: {
-    gap: 16,
+    // gap: 16, // May not be supported in all RN versions
   },
   inputContainer: {
-    marginBottom: 16,
+    // marginBottom handled inline
   },
   input: {
     padding: 16,
@@ -212,14 +217,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontStyle: 'italic',
     color: '#1F2937',
-    paddingBottom: 16,
+    // paddingBottom handled inline
   },
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 12,
+    // gap: 12, // May not be supported in all RN versions
   },
   buttonSpacer: {
     marginRight: 16,

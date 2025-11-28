@@ -54,6 +54,7 @@ export default function SignIn() {
       }
     };
     checkLoginStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogin = async () => {

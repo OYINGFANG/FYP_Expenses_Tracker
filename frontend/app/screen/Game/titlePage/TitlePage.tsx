@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { useRouter } from "expo-router";
 // ⬇️ add these so we initialize the store before navigating
 import { useGameSliceDispatch } from "../store/reduxHooks";
 import { startNewGame } from "../store/gameSlice";
+import SavedGameModal from "./SavedGameModal";
 
 type Props = {
   onStartNewGame?: () => void;
@@ -26,6 +27,7 @@ const TitlePage: React.FC<Props> = ({
 }) => {
   const router = useRouter();
   const dispatch = useGameSliceDispatch();
+  const [savedGameModalVisible, setSavedGameModalVisible] = useState(false);
 
   const handleStart = () => {
     if (onStartNewGame) {
@@ -41,6 +43,10 @@ const TitlePage: React.FC<Props> = ({
   const handleHowToPlay = () => {
     if (onOpenAbout) onOpenAbout();
     else router.push("/screen/Game/aboutPage/AboutPage");
+  };
+
+  const handleBackToHome = () => {
+    router.replace("/screen/Home");
   };
 
   return (
@@ -78,7 +84,13 @@ const TitlePage: React.FC<Props> = ({
 
             <TouchableOpacity
               style={styles.buttonSecondary}
-              onPress={() => onOpenSavedGameModal?.()}
+              onPress={() => {
+                if (onOpenSavedGameModal) {
+                  onOpenSavedGameModal();
+                } else {
+                  setSavedGameModalVisible(true);
+                }
+              }}
               activeOpacity={0.8}
             >
               <View style={styles.buttonContent}>
@@ -95,9 +107,23 @@ const TitlePage: React.FC<Props> = ({
                 <Text style={styles.buttonTextSecondary}>How to Play</Text>
               </View>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.buttonSecondary}
+              onPress={handleBackToHome}
+              activeOpacity={0.8}
+            >
+              <View style={styles.buttonContent}>
+                <Text style={styles.buttonTextSecondary}>Back to Home</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         </View>
       </ImageBackground>
+      <SavedGameModal
+        visible={savedGameModalVisible}
+        onClose={() => setSavedGameModalVisible(false)}
+      />
     </SafeAreaView>
   );
 };

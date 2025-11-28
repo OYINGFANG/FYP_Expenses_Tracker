@@ -32,12 +32,16 @@ const TravelPanel = () => {
   const availableLocations: string[] = [];
   const dispatch = useGameSliceDispatch();
   mapData.routes.forEach((route) => {
-    // Convert both to strings for comparison
-    const routeLocationStrings = route.locations.map((loc) => String(loc));
-    if (routeLocationStrings.includes(String(location))) {
-      const otherLocation = route.locations.find((loc) => String(loc) !== String(location));
+    // Normalize locations for comparison
+    const normalizedCurrentLocation = String(location).toLowerCase().trim();
+    const routeLocationStrings = route.locations.map((loc) => String(loc).toLowerCase().trim());
+    if (routeLocationStrings.includes(normalizedCurrentLocation)) {
+      const otherLocation = route.locations.find(
+        (loc) => String(loc).toLowerCase().trim() !== normalizedCurrentLocation
+      );
       if (otherLocation) {
-        availableLocations.push(String(otherLocation));
+        // Normalize the destination location
+        availableLocations.push(String(otherLocation).toLowerCase().trim());
       }
     }
   });
@@ -99,14 +103,16 @@ const TravelPanel = () => {
     }
   };
   const handleTravelStart = (destination: string) => {
+    // Normalize destination to ensure consistency
+    const normalizedDestination = String(destination).toLowerCase().trim();
     const route = mapData.routes.find(
       (item) =>
-        item.locations.map((loc) => `${loc}`).includes(location) &&
-        item.locations.map((loc) => `${loc}`).includes(destination),
+        item.locations.map((loc) => String(loc).toLowerCase().trim()).includes(String(location).toLowerCase().trim()) &&
+        item.locations.map((loc) => String(loc).toLowerCase().trim()).includes(normalizedDestination),
     );
     if (route) {
       const initTravelState = {
-        destination,
+        destination: normalizedDestination,
         progress: 0,
         route,
         routeDays: route.sections.length,
@@ -118,12 +124,18 @@ const TravelPanel = () => {
         },
       };
       setTravelState({ ...initTravelState });
-      handleTravelTurn(initTravelState);
+      // Open modal first, then process first day when user clicks Continue
       openModal();
     }
   };
   const handleTravelContinue = () => {
     if (travelState.progress < travelState.routeDays) {
+      // If this is the first day (progress is 0), process it immediately
+      if (travelState.progress === 0) {
+        handleTravelTurn();
+        return;
+      }
+      // For subsequent days, use transition animation
       setTravelTransitionStatus('closing');
       setTimeout(() => {
         setTravelTransitionStatus('off');
@@ -136,6 +148,7 @@ const TravelPanel = () => {
         }, 500);
       }, 500);
     } else {
+      // Travel complete - relocate to destination
       handleTravelTurn();
     }
   };

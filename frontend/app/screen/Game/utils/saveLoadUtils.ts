@@ -119,9 +119,10 @@ export const saveGameLocal = async (gameState: GameState, isQuickSave: boolean) 
         ? [saveListItem, ...savesList]
         : savesList.map((item) => (item.id === gameState.id ? saveListItem : item))
       ).sort((a, b) => {
-        if (a.modifiedAt > b.modifiedAt) return 1;
-        if (a.modifiedAt < b.modifiedAt) return -1;
-        return 0;
+        // Sort descending (newest first) by comparing timestamps
+        const aTime = parseInt(a.modifiedAt, 10);
+        const bTime = parseInt(b.modifiedAt, 10);
+        return bTime - aTime; // Descending order
       });
 
       storage.setItem(localStorageKeys.savesIndex, JSON.stringify(newSavesList));
@@ -143,7 +144,13 @@ export const getLocalSavesList = async (): Promise<GameSaveListItem[]> => {
         savesList = [];
       }
     }
-    return savesList.length > 0 ? localSavesListAdapter(savesList) : [];
+    // Sort by modifiedAt descending (newest first) before applying adapter
+    const sortedSaves = savesList.sort((a, b) => {
+      const aTime = parseInt(a.modifiedAt, 10);
+      const bTime = parseInt(b.modifiedAt, 10);
+      return bTime - aTime; // Descending order (newest first)
+    });
+    return sortedSaves.length > 0 ? localSavesListAdapter(sortedSaves) : [];
   } catch (err) {
     console.error('get save list error', err);
     return [];
