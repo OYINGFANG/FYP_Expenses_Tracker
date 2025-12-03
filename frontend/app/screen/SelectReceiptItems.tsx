@@ -17,6 +17,7 @@ type ReceiptItem = {
   amount: string;
   qty?: number;
   selected?: boolean;
+  baseAmount?: number;
 };
 
 export default function SelectReceiptItems() {
@@ -27,6 +28,10 @@ export default function SelectReceiptItems() {
     ? JSON.parse(params.items as string)
     : [];
 
+  const receiptSubtotalParam = parseFloat((params.subtotal as string) || "0") || 0;
+  const receiptServiceChargeParam = parseFloat((params.serviceCharge as string) || "0") || 0;
+  const receiptTaxParam = parseFloat((params.tax as string) || "0") || 0;
+
   const merchant = (params.merchant as string) || "Unknown Merchant";
   const date =
     (params.date as string) || new Date().toISOString().split("T")[0];
@@ -34,27 +39,66 @@ export default function SelectReceiptItems() {
   const inferredPaymentMethod = (params.paymentMethod as string) || "Cash";
 
   const [cartItems, setCartItems] = useState<ReceiptItem[]>(
-    items.map((item) => ({
-      ...item,
-      qty: 1,
-      selected: true,
-    }))
+    items.map((item) => {
+      const rawAmount: any = (item as any).amount;
+      const base = parseFloat(rawAmount != null ? String(rawAmount) : "0") || 0;
+      return {
+        ...item,
+        amount: String(base.toFixed(2)),
+        baseAmount: base,
+        qty: 1,
+        selected: true,
+      };
+    })
   );
 
+  const originalItemsBaseTotal = items.reduce((sum, item: any) => {
+    const rawAmount = item?.amount;
+    const base = parseFloat(rawAmount != null ? String(rawAmount) : "0") || 0;
+    return sum + base;
+  }, 0);
+
+  const [itemsSubtotal, setItemsSubtotal] = useState<number>(0);
+  const [allocatedServiceCharge, setAllocatedServiceCharge] = useState<number>(0);
+  const [allocatedTax, setAllocatedTax] = useState<number>(0);
   const [total, setTotal] = useState<number>(0);
   const [selectedCount, setSelectedCount] = useState<number>(items.length);
 
   useEffect(() => {
-    const newTotal = cartItems.reduce((sum: number, item: ReceiptItem) => {
+    const baseSelected = cartItems.reduce((sum: number, item: ReceiptItem) => {
       if (item.selected) {
-        const price = parseFloat(item.amount || "0");
-        return sum + price * (item.qty || 1);
+        const base = (item.baseAmount ?? parseFloat(item.amount || "0")) || 0;
+        return sum + base * (item.qty || 1);
       }
       return sum;
     }, 0);
+
+    const roundedBaseSelected = parseFloat(baseSelected.toFixed(2));
+    setItemsSubtotal(roundedBaseSelected);
+
+    const receiptBaseTotal =
+      receiptSubtotalParam > 0 ? receiptSubtotalParam : originalItemsBaseTotal;
+
+    let svcAlloc = 0;
+    let taxAlloc = 0;
+
+    if (receiptBaseTotal > 0 && roundedBaseSelected > 0) {
+      const fraction = roundedBaseSelected / receiptBaseTotal;
+      svcAlloc = receiptServiceChargeParam * fraction;
+      taxAlloc = receiptTaxParam * fraction;
+    }
+
+    const roundedSvc = parseFloat(svcAlloc.toFixed(2));
+    const roundedTax = parseFloat(taxAlloc.toFixed(2));
+
+    setAllocatedServiceCharge(roundedSvc);
+    setAllocatedTax(roundedTax);
+
+    const newTotal = roundedBaseSelected + roundedSvc + roundedTax;
     setTotal(parseFloat(newTotal.toFixed(2)));
+
     setSelectedCount(cartItems.filter((i) => i.selected).length);
-  }, [cartItems]);
+  }, [cartItems, originalItemsBaseTotal, receiptSubtotalParam, receiptServiceChargeParam, receiptTaxParam]);
 
   const toggleSelect = (index: number) => {
     const newCart = [...cartItems];
@@ -194,7 +238,23 @@ export default function SelectReceiptItems() {
           <View style={styles.summaryBox}>
             <View style={styles.summaryRow}>
               <View>
-                <Text style={styles.summaryLabel}>Total Amount</Text>
+                <Text style={styles.summaryLabel}>Items Subtotal</Text>
+                <Text style={styles.subtotalValue}>RM {itemsSubtotal.toFixed(2)}</Text>
+                {(allocatedServiceCharge > 0 || allocatedTax > 0) && (
+                  <View style={styles.breakdownBlock}>
+                    {allocatedServiceCharge > 0 && (
+                      <Text style={styles.breakdownLine}>
+                        + Service charge: RM {allocatedServiceCharge.toFixed(2)}
+                      </Text>
+                    )}
+                    {allocatedTax > 0 && (
+                      <Text style={styles.breakdownLine}>
+                        + SST / Tax: RM {allocatedTax.toFixed(2)}
+                      </Text>
+                    )}
+                  </View>
+                )}
+                <Text style={styles.summaryLabelTotal}>Total (incl. charges)</Text>
                 <Text style={styles.totalValue}>RM {total.toFixed(2)}</Text>
               </View>
               <View style={styles.itemsInfo}>
@@ -390,6 +450,25 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "800",
     color: "#1F7B6B",
+  },
+  subtotalValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F7B6B",
+    marginBottom: 4,
+  },
+  summaryLabelTotal: {
+    marginTop: 8,
+    fontSize: 13,
+    color: "#888",
+    fontWeight: "600",
+  },
+  breakdownBlock: {
+    marginTop: 4,
+  },
+  breakdownLine: {
+    fontSize: 12,
+    color: "#555",
   },
   itemsInfo: {
     alignItems: "flex-end",

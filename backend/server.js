@@ -41,6 +41,12 @@ const openai = process.env.OPENAI_API_KEY
     })
   : null;
 
+// Small helper to read a file as base64
+function fileToBase64(filePath) {
+  const data = fs.readFileSync(filePath);
+  return data.toString("base64");
+}
+
 // =============== ENVIRONMENT VARIABLES ===============
 const RAPID_API_KEY = process.env.RAPID_API_KEY;
 const ASSEMBLYAI_KEY = process.env.ASSEMBLYAI_KEY;
@@ -64,6 +70,130 @@ if (!ASSEMBLYAI_KEY) {
 }
 
 // ======================================================
+// 🧾 Receipt OCR via OpenAI Vision
+// ======================================================
+app.post("/ocr/receipt", upload.single("file"), async (req, res) => {
+  try {
+    if (!openai) {
+      return res.status(500).json({ error: "OpenAI API key not configured" });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: "Missing receipt image file" });
+    }
+
+    const filePath = req.file.path;
+    const base64Image = fileToBase64(filePath);
+
+    const systemPrompt = `
+You are a receipt OCR and parser. You will be given an image of a shopping or payment receipt.
+Extract the key structured data and return it as strict JSON with this shape:
+{
+  "receipts": [
+    {
+      "total": number | null,          // final amount customer pays (includes tax & service)
+      "totalInclTax": number | null,   // alias for total, may be same as total
+      "sub_total": number | null,      // items total BEFORE any tax/service (sum of line items)
+      "service_charge": number | null, // total service charge on the bill
+      "tax": number | null,            // total SST/GST/VAT or similar tax
+      "date": string | null,
+      "ocr_text": string,
+      "merchant_name": string | null,
+      "payment_method": string | null,
+      "items": [
+        {
+          "description": string,
+          "quantity": number | null,
+          "unit_price": number | null,
+          "amount": number | null      // line total = quantity * unit_price
+        }
+      ]
+    }
+  ]
+}
+
+VERY IMPORTANT RULES ABOUT TOTAL:
+- Always set "total" to the FINAL amount the customer must pay, INCLUDING all SST/tax, service charges, and fees.
+- If the receipt shows both "SubTotal" and "Net Total" / "Grand Total" / "Total", choose the last one that includes taxes and service.
+- If you see lines like "Service Charge", "SST", "Tax", make sure they are INCLUDED in the "total" value.
+- Only use a subtotal (before tax) when no final total including tax appears anywhere.
+
+TAX BREAKDOWN RULES:
+- If the receipt has a clear items subtotal (before tax), put that number in "sub_total".
+- If the receipt has a line like "Service Charge" or "Service", put the numeric amount into "service_charge".
+- If the receipt has a line like "SST", "GST", "Tax", put the numeric amount into "tax".
+- If you cannot find a value for any of these (sub_total, service_charge, tax), set them to null.
+- Do NOT try to infer hidden taxes; only use amounts explicitly written on the receipt.
+
+General rules:
+- If you are unsure about any numeric field, set it to null instead of guessing.
+- Always include at least one object in "receipts".
+- Always include "ocr_text" with all text you can reasonably read.
+- ONLY output valid JSON, no extra commentary.`;
+
+    let parsed;
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Here is the receipt image. Extract the data as specified.",
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:${req.file.mimetype || "image/jpeg"};base64,${base64Image}`,
+                },
+              },
+            ],
+          },
+        ],
+        temperature: 0,
+        max_tokens: 700,
+      });
+
+      const raw = response.choices[0]?.message?.content || "{}";
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      console.error("❌ OpenAI OCR error:", err.response?.data || err.message || err);
+      return res.status(500).json({ error: "Failed to process receipt with OpenAI" });
+    } finally {
+      // clean up temp file
+      fs.unlink(filePath, () => {});
+    }
+
+    // Normalise shape a bit to keep frontend logic simple
+    if (!parsed.receipts || !Array.isArray(parsed.receipts) || parsed.receipts.length === 0) {
+      parsed.receipts = [
+        {
+          total: null,
+          totalInclTax: null,
+          date: null,
+          ocr_text: "",
+          merchant_name: null,
+          payment_method: null,
+          items: [],
+        },
+      ];
+    }
+
+    return res.json(parsed);
+  } catch (err) {
+    console.error("❌ /ocr/receipt error:", err.response?.data || err.message || err);
+    if (req.file && req.file.path) {
+      fs.unlink(req.file.path, () => {});
+    }
+    res.status(500).json({ error: "Failed to process receipt" });
+  }
+});
+
+// ======================================================
 // 🗣️ AssemblyAI transcription routes
 // ======================================================
 async function uploadToAssemblyAI(filePath) {
@@ -76,6 +206,232 @@ async function uploadToAssemblyAI(filePath) {
   });
   return response.data.upload_url;
 }
+
+// ======================================================
+// 🤖 AI Behavior Analysis via OpenAI
+// ======================================================
+app.post("/ai/behavior-analysis", async (req, res) => {
+  try {
+    if (!openai) {
+      return res.status(500).json({ error: "OpenAI API key not configured" });
+    }
+
+    const {
+      expenses = [],
+      incomes = [],
+      debts = [],
+      budget = {},
+      savings = 0,
+      currentMonthKey,
+    } = req.body;
+
+    // Calculate key metrics
+    const totalExpenses = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    const totalIncome = incomes.reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+    const totalDebt = debts.reduce((sum, d) => sum + (Number(d.currentBalance) || 0), 0);
+    const monthlyDebtPayments = debts.reduce((sum, d) => sum + (Number(d.monthlyPayment) || 0), 0);
+    const budgetTotal = budget.totalBudget || 0;
+    const budgetSpent = budget.totalSpent || 0;
+    const budgetRemaining = budget.remaining || 0;
+    const budgetUsedPct = budgetTotal > 0 ? (budgetSpent / budgetTotal) * 100 : 0;
+
+    // Category breakdown
+    const categoryBreakdown = expenses.reduce((acc, e) => {
+      const cat = e.category || "Others";
+      acc[cat] = (acc[cat] || 0) + (Number(e.amount) || 0);
+      return acc;
+    }, {});
+
+    // Calculate DTI (Debt-to-Income ratio)
+    const dti = totalIncome > 0 ? (monthlyDebtPayments / totalIncome) * 100 : 0;
+
+    // Calculate savings rate
+    const netCashflow = totalIncome - totalExpenses;
+    const savingsRate = totalIncome > 0 ? (netCashflow / totalIncome) * 100 : 0;
+
+    // Build context for AI
+    const financialContext = {
+      currentMonth: currentMonthKey || new Date().toISOString().slice(0, 7),
+      income: {
+        total: totalIncome,
+        count: incomes.length,
+        sources: incomes.map((i) => ({
+          amount: Number(i.amount) || 0,
+          category: i.category || "Others",
+          date: i.dateISO,
+        })),
+      },
+      expenses: {
+        total: totalExpenses,
+        count: expenses.length,
+        byCategory: categoryBreakdown,
+        transactions: expenses.slice(0, 20).map((e) => ({
+          amount: Number(e.amount) || 0,
+          category: e.category || "Others",
+          date: e.dateISO,
+          description: e.description || e.note || "",
+        })),
+      },
+      budget: {
+        total: budgetTotal,
+        spent: budgetSpent,
+        remaining: budgetRemaining,
+        usedPercentage: budgetUsedPct,
+        allocations: budget.allocations || {},
+      },
+      debt: {
+        totalBalance: totalDebt,
+        monthlyPayments: monthlyDebtPayments,
+        count: debts.length,
+        dti: dti,
+        debts: debts.map((d) => ({
+          name: d.name || "Unknown",
+          currentBalance: Number(d.currentBalance) || 0,
+          monthlyPayment: Number(d.monthlyPayment) || 0,
+          originalAmount: Number(d.originalAmount) || 0,
+        })),
+      },
+      savings: {
+        liquid: savings,
+        rate: savingsRate,
+        netCashflow: netCashflow,
+      },
+    };
+
+    const systemPrompt = `You are an expert financial advisor AI assistant. Analyze the user's financial data and provide personalized, actionable insights.
+
+Your task:
+1. Analyze expenses, income, debt, budget, and savings comprehensively
+2. Identify critical issues that need immediate attention (alerts)
+3. Provide warnings for concerning patterns
+4. Offer positive reinforcement for good financial habits
+5. Give specific, actionable recommendations
+
+CRITICAL RULES:
+- ALERTS (critical issues) MUST be at the top of your response
+- Prioritize by severity: critical > warning > info
+- Be specific with numbers and amounts (use RM currency)
+- Provide actionable advice, not just observations
+- Consider Malaysian financial context (SST, common expenses, etc.)
+
+Response format (JSON):
+{
+  "insights": [
+    {
+      "message": "Clear, concise insight message",
+      "severity": "critical" | "warning" | "info",
+      "icon": "emoji or icon identifier",
+      "type": "category name for grouping",
+      "actionable": true/false
+    }
+  ],
+  "summary": {
+    "overallHealth": "excellent" | "good" | "fair" | "poor",
+    "keyConcerns": ["list of main concerns"],
+    "positiveHighlights": ["list of good things"]
+  }
+}`;
+
+    const userPrompt = `Analyze this user's financial situation for ${financialContext.currentMonth}:
+
+INCOME:
+- Total: RM ${totalIncome.toFixed(2)}
+- Sources: ${incomes.length} income records
+${incomes.length > 0 ? `- Breakdown: ${JSON.stringify(financialContext.income.sources.slice(0, 5))}` : ""}
+
+EXPENSES:
+- Total: RM ${totalExpenses.toFixed(2)}
+- Transactions: ${expenses.length}
+- Category breakdown: ${JSON.stringify(categoryBreakdown)}
+
+BUDGET:
+- Budget set: RM ${budgetTotal.toFixed(2)}
+- Spent: RM ${budgetSpent.toFixed(2)} (${budgetUsedPct.toFixed(1)}% used)
+- Remaining: RM ${budgetRemaining.toFixed(2)}
+${budget.allocations ? `- Allocations: ${JSON.stringify(budget.allocations)}` : ""}
+
+DEBT:
+- Total debt balance: RM ${totalDebt.toFixed(2)}
+- Monthly payments: RM ${monthlyDebtPayments.toFixed(2)}
+- Debt-to-Income ratio: ${dti.toFixed(1)}%
+- Number of debts: ${debts.length}
+${debts.length > 0 ? `- Details: ${JSON.stringify(financialContext.debt.debts)}` : ""}
+
+SAVINGS:
+- Liquid savings: RM ${savings.toFixed(2)}
+- Savings rate: ${savingsRate.toFixed(1)}%
+- Net cashflow: RM ${netCashflow.toFixed(2)}
+
+Provide comprehensive analysis with:
+1. Critical alerts (budget exceeded, negative savings, high DTI, etc.) at the top
+2. Warnings (approaching limits, concerning trends)
+3. Positive insights (good habits, achievements)
+4. Actionable recommendations
+
+Focus on what matters most for financial health.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 2000,
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) {
+      throw new Error("No response from OpenAI");
+    }
+
+    const analysis = JSON.parse(content);
+
+    // Ensure insights array exists and is properly formatted
+    if (!Array.isArray(analysis.insights)) {
+      analysis.insights = [];
+    }
+
+    // Sort insights by severity (critical first, then warning, then info)
+    const severityOrder = { critical: 0, warning: 1, info: 2 };
+    analysis.insights.sort((a, b) => {
+      const aSev = severityOrder[a.severity] ?? 2;
+      const bSev = severityOrder[b.severity] ?? 2;
+      return aSev - bSev;
+    });
+
+    // Add default icons if missing
+    analysis.insights.forEach((insight) => {
+      if (!insight.icon) {
+        if (insight.severity === "critical") insight.icon = "🚨";
+        else if (insight.severity === "warning") insight.icon = "⚠️";
+        else insight.icon = "💡";
+      }
+    });
+
+    res.json({
+      success: true,
+      monthKey: financialContext.currentMonth,
+      insights: analysis.insights,
+      summary: analysis.summary || {},
+      metrics: {
+        totalExpenses,
+        totalIncome,
+        netCashflow,
+        savingsRate,
+        dti,
+        budgetUsedPct,
+      },
+    });
+  } catch (err) {
+    console.error("AI Behavior Analysis error:", err);
+    res.status(500).json({
+      error: "Failed to analyze behavior",
+      message: err.message,
+    });
+  }
+});
 
 app.post("/transcribe", upload.single("file"), async (req, res) => {
   try {

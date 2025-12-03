@@ -108,12 +108,12 @@ const BankAmountModal = () => {
               </View>
 
               <View style={{ marginBottom: 16 }}>
-                <Text style={styles.explainer} testID={`explainer-${currentModal}`}>
-                  <FormattedMessage
-                    id={`bank__amount_modal__explainer__${currentModal}`}
-                    values={{ maxAmt }}
-                  />
-                </Text>
+              <Text style={styles.explainer} testID={`explainer-${currentModal}`}>
+                <FormattedMessage
+                  id={`bank__amount_modal__explainer__${currentModal}`}
+                  values={{ maxAmt }}
+                />
+              </Text>
               </View>
               <View style={[styles.buttonContainer, { marginTop: 16 }]}>
                 <View style={styles.buttonSpacer}>
@@ -134,11 +134,11 @@ const BankAmountModal = () => {
                 )}
                 {maxAmt > 0 && numAmt > 0 && (
                   <View style={styles.buttonSpacer}>
-                    <Button
-                      variant="primary"
-                      label={formatMessage({ id: 'ok', defaultMessage: 'OK' })}
-                      onPress={() => handleConfirmAmt(numAmt)}
-                    />
+                  <Button
+                    variant="primary"
+                    label={formatMessage({ id: 'ok', defaultMessage: 'OK' })}
+                    onPress={() => handleConfirmAmt(numAmt)}
+                  />
                   </View>
                 )}
               </View>

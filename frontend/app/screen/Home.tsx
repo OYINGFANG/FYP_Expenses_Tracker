@@ -7,31 +7,67 @@ import {
   SafeAreaView,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../component/BottomNav";
 import * as ImagePicker from "expo-image-picker";
 import { manipulateAsync } from "expo-image-manipulator";
 import { useRouter } from "expo-router";
 import { getUsernameFromFirestore } from "../utils/UserUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  analyzeSpendingBehavior,
-  type BehaviourReport,
-  type Expense as BehExpense,
-} from "../services/behaviorAnalysis";
+import { CHAT_SERVER_URL } from "../services/api";
+// Removed rule-based behavior analysis - now using AI
 import { subscribeUserExpenseRecords, ExpenseRecord } from "../utils/ExpensesUtils";
 import { getUserBudget, getCurrentMonthKey, getBudgetProgress, getMonthDateRange } from "../utils/budgetUtils";
 import { subscribeUserIncomeRecords, type IncomeRecord } from "../utils/IncomeUtils";
 import { subscribeUserDebts } from "../utils/DebtUtils";
 
 // =================== OCR helpers ===================
-const ASPRISE_URL = "https://ocr.asprise.com/api/v1/receipt";
+const OCR_SERVER_URL = `${CHAT_SERVER_URL}/ocr/receipt`;
+
+// Normalize various receipt date formats into ISO YYYY-MM-DD for the rest of the app
+const normalizeReceiptDate = (rawDate?: string | null): string => {
+  try {
+    if (!rawDate) {
+      return new Date().toISOString().split("T")[0];
+    }
+
+    const trimmed = rawDate.trim();
+
+    // Already ISO-like: 2025-12-02T... or 2025-12-02
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+      return trimmed.slice(0, 10);
+    }
+
+    // Common receipt style: DD/MM/YYYY or DD-MM-YYYY (Malaysia style)
+    const m = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if (m) {
+      const day = parseInt(m[1], 10);
+      const month = parseInt(m[2], 10);
+      let year = parseInt(m[3], 10);
+      if (year < 100) year += 2000; // handle YY as 20YY
+      const iso = new Date(year, month - 1, day).toISOString().split("T")[0];
+      return iso;
+    }
+
+    // Fallback: let JS Date try to parse it
+    const parsed = new Date(trimmed);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().split("T")[0];
+    }
+  } catch (e) {
+    console.warn("Failed to normalize receipt date:", rawDate, e);
+  }
+
+  // Last resort: today
+  return new Date().toISOString().split("T")[0];
+};
 
 const detectCategory = (text: string): string => {
   const lower = (text || "").toLowerCase();
-  if (lower.match(/rice|fish|chicken|tomato|egg|drink|tea|cabbage|meal|food|mee/)) return "Food";
-  if (lower.match(/grab|taxi|bus|fuel|toll|train|car|transport/)) return "Transport";
+  if (lower.match(/rice|fish|chicken|tomato|egg|drink|tea|cabbage|meal|food|mee|cake/)) return "Food";
+  if (lower.match(/grab|taxi|bus|fuel|toll|train|car|transport|RON95|RON97|diesel/)) return "Transport";
   if (lower.match(/supermarket|grocer|mart|tesco|jaya|aeon|lotus|grocery|shopping/)) return "Shopping";
   if (lower.match(/hotel|flight|travel|booking|trip/)) return "Travel";
   if (lower.match(/movie|cinema|ticket|entertainment|game/)) return "Entertainment";
@@ -88,9 +124,27 @@ export default function Home() {
   const [expense, setExpense] = useState(0);
   const [total, setTotal] = useState(0);
   const [expenseRecords, setExpenseRecords] = useState<ExpenseRecord[]>([]);
-  const [behaviourReport, setBehaviourReport] = useState<BehaviourReport | null>(null);
+  const [behaviourReport, setBehaviourReport] = useState<{
+    insights: Array<{
+      message: string;
+      severity: "critical" | "warning" | "info";
+      icon?: string;
+      type?: string;
+      actionable?: boolean;
+    }>;
+    summary?: {
+      overallHealth?: string;
+      keyConcerns?: string[];
+      positiveHighlights?: string[];
+    };
+    totals?: {
+      monthTotal?: number;
+      trendMoM?: number;
+    };
+  } | null>(null);
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [categoryBreakdown, setCategoryBreakdown] = useState<Record<string, number>>({});
+  const [isScanningReceipt, setIsScanningReceipt] = useState(false);
 
   // 🔁 NEW: overall budget progress (current month)
   const [budgetTotal, setBudgetTotal] = useState(0);
@@ -307,7 +361,7 @@ const debtHealth = useMemo(() => {
     loadBudgetProgress();
   }, [expenseRecords]);
 
-  // Run behavior analysis when expense records change
+  // Run AI-powered behavior analysis when data changes
   const runBehaviorAnalysis = async () => {
     try {
       setIsLoadingAnalysis(true);
@@ -317,55 +371,161 @@ const debtHealth = useMemo(() => {
         return;
       }
 
-      // Convert ExpenseRecord to BehExpense format
-      const expenses: BehExpense[] = expenseRecords.map((r) => ({
-        id: r.id,
-        userId: userId,
-        amount: r.amount,
-        category: r.category,
-        description: r.description,
-        date: r.dateISO,
-      }));
+      // Get current month key
+      const monthKey = getCurrentMonthKey();
+      const { startISO, endISO } = getMonthDateRange(monthKey);
 
-      // Get budget from user settings or calculate from income
-      let monthlyBudget = 2000; // Default budget
-      
-      // Try to load user's saved budget
+      // Filter expenses and income for current month
+      const monthExpenses = expenseRecords.filter(
+        (r) => r.dateISO && r.dateISO >= startISO && r.dateISO < endISO
+      );
+      const monthIncomes = incomeRecords.filter(
+        (r) => r.dateISO && r.dateISO >= startISO && r.dateISO < endISO
+      );
+
+      // Get budget data
+      let budgetData = {
+        totalBudget: 0,
+        totalSpent: 0,
+        remaining: 0,
+        allocations: {} as Record<string, number>,
+      };
+
       try {
         const userBudget = await getUserBudget();
-        if (userBudget && userBudget.totalBudget > 0) {
-          monthlyBudget = userBudget.totalBudget;
-          console.log(`[Budget] Using saved budget: ${monthlyBudget.toFixed(2)}`);
-        } else if (income > 0) {
-          // Suggest 80% of total income as spending budget (20% for savings)
-          monthlyBudget = income * 0.8;
-          console.log(`[Budget] Using ${monthlyBudget.toFixed(2)} as monthly budget (80% of income: ${income})`);
-        } else {
-          console.log(`[Budget] Using default monthly budget: ${monthlyBudget}`);
+        if (userBudget) {
+          budgetData.totalBudget = userBudget.totalBudget || 0;
+          budgetData.allocations = userBudget.allocations || {};
+        }
+
+        const progress = await getBudgetProgress(monthKey);
+        if (progress) {
+          budgetData.totalSpent = progress.totalSpent;
+          budgetData.remaining = progress.remaining;
         }
       } catch (error) {
         console.error("Error loading budget:", error);
-        // Fallback to income-based or default
-        if (income > 0) {
-          monthlyBudget = income * 0.8;
-        }
       }
 
-      const report: BehaviourReport = analyzeSpendingBehavior(expenses, { monthlyBudget });
-      setBehaviourReport(report);
+      // Prepare expenses data
+      const expensesData = monthExpenses.map((r) => ({
+        id: r.id,
+        amount: Number(r.amount) || 0,
+        category: (r.category as string) || "Others",
+        description: (r.description || (r as any).note || "").toString(),
+        dateISO: r.dateISO,
+        note: (r as any).note || "",
+      }));
+
+      // Prepare income data
+      const incomesData = monthIncomes.map((r) => ({
+        id: r.id,
+        amount: Number(r.amount) || 0,
+        category: (r.category as string) || "Others",
+        dateISO: r.dateISO,
+        source: (r as any).source || "",
+      }));
+
+      // Prepare debt data
+      const debtsData = debts.map((d) => ({
+        id: d.id,
+        name: d.name || "Unknown",
+        currentBalance: Number(d.currentBalance) || 0,
+        monthlyPayment: Number(d.monthlyPayment) || 0,
+        originalAmount: Number(d.originalAmount) || 0,
+      }));
+
+      // Use total balance as savings (or could fetch from savings collection)
+      const savingsAmount = total > 0 ? total : 0;
+
+      // Call AI behavior analysis endpoint
+      const response = await fetch(`${CHAT_SERVER_URL}/ai/behavior-analysis`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          expenses: expensesData,
+          incomes: incomesData,
+          debts: debtsData,
+          budget: budgetData,
+          savings: savingsAmount,
+          currentMonthKey: monthKey,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Calculate trend for display (compare with previous month if available)
+        const prevMonthKey = (() => {
+          const [y, m] = monthKey.split("-").map(Number);
+          const d = new Date(y, m - 2, 1);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        })();
+
+        const prevMonthExpenses = expenseRecords.filter((r) => {
+          if (!r.dateISO) return false;
+          const rMonthKey = r.dateISO.slice(0, 7);
+          return rMonthKey === prevMonthKey;
+        });
+
+        const prevMonthTotal = prevMonthExpenses.reduce(
+          (sum, r) => sum + (Number(r.amount) || 0),
+          0
+        );
+        const currentMonthTotal = monthExpenses.reduce(
+          (sum, r) => sum + (Number(r.amount) || 0),
+          0
+        );
+
+        const trendMoM =
+          prevMonthTotal > 0
+            ? (currentMonthTotal - prevMonthTotal) / prevMonthTotal
+            : undefined;
+
+        setBehaviourReport({
+          insights: result.insights || [],
+          summary: result.summary || {},
+          totals: {
+            monthTotal: result.metrics?.totalExpenses || currentMonthTotal,
+            trendMoM,
+          },
+        });
+      } else {
+        throw new Error(result.error || "Analysis failed");
+      }
+
       setIsLoadingAnalysis(false);
     } catch (e: any) {
-      console.error("Behavior analysis error:", e);
+      console.error("AI Behavior analysis error:", e);
       setIsLoadingAnalysis(false);
+      // Set a fallback message
+      setBehaviourReport({
+        insights: [
+          {
+            message: "Unable to analyze behavior at this time. Please try again later.",
+            severity: "info",
+            icon: "ℹ️",
+          },
+        ],
+        summary: {},
+        totals: {},
+      });
     }
   };
 
   useEffect(() => {
-    if (expenseRecords.length > 0) {
+    // Run analysis when expenses, income, debts, or budget changes
+    if (expenseRecords.length > 0 || incomeRecords.length > 0 || debts.length > 0) {
       runBehaviorAnalysis();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expenseRecords]);
+  }, [expenseRecords, incomeRecords, debts, budgetTotal, budgetSpent]);
 
   // Calculate categories from real data
   const getCategoriesForDisplay = () => {
@@ -411,22 +571,26 @@ const debtHealth = useMemo(() => {
 
   const categories = getCategoriesForDisplay();
 
-  // Get behavior insights - prioritize key insights similar to the image
+  // Get behavior insights from AI analysis
   const getBehaviorInsights = (): { text: string; type: string; severity?: string; icon?: string }[] => {
-    if (!behaviourReport || !behaviourReport.insights.length) {
-      if (expenseRecords.length === 0) {
+    if (!behaviourReport || !behaviourReport.insights || behaviourReport.insights.length === 0) {
+      if (isLoadingAnalysis) {
         return [
-          { text: "Start tracking expenses to unlock behavior insights! 📊", type: "good" },
+          { text: "Analyzing your financial behavior with AI...", type: "good", icon: "🤖" },
+        ];
+      }
+      if (expenseRecords.length === 0 && incomeRecords.length === 0) {
+        return [
+          { text: "Start tracking expenses and income to unlock AI-powered insights! 📊", type: "good", icon: "💡" },
         ];
       }
       return [
-        { text: "Analyzing your spending patterns...", type: "good" },
+        { text: "No insights available yet. Add more transactions to get personalized analysis.", type: "good", icon: "ℹ️" },
       ];
     }
 
-    // Get top 5-6 insights (similar to the image which shows 5 insights)
-    // The analysis service already sorts them by priority
-    return behaviourReport.insights.slice(0, 6).map((insight) => ({
+    // AI already sorts by severity (critical > warning > info), so we just take top 6-8
+    return behaviourReport.insights.slice(0, 8).map((insight) => ({
       text: insight.message,
       type: insight.severity === "critical" || insight.severity === "warning" ? "warning" : "good",
       severity: insight.severity,
@@ -488,6 +652,7 @@ const debtHealth = useMemo(() => {
 
   const processReceipt = async (uri: string, base64?: string) => {
     try {
+      setIsScanningReceipt(true);
       await manipulateAsync(
         uri,
         [{ resize: { width: 800 } }],
@@ -495,16 +660,13 @@ const debtHealth = useMemo(() => {
       );
 
       const formData = new FormData();
-      formData.append("client_id", "TEST"); // TODO: replace with your real key
-      formData.append("recognizer", "auto");
-      formData.append("ref_no", `receipt_${Date.now()}`);
       formData.append("file", {
         uri,
         name: "receipt.jpg",
         type: "image/jpeg",
       } as any);
 
-      const response = await fetch(ASPRISE_URL, { method: "POST", body: formData });
+      const response = await fetch(OCR_SERVER_URL, { method: "POST", body: formData });
       const result = await response.json();
       console.log("🧾 OCR result:", JSON.stringify(result, null, 2));
 
@@ -515,10 +677,13 @@ const debtHealth = useMemo(() => {
 
       const receipt = result.receipts[0];
       const total = receipt.total || receipt.totalInclTax || "0.00";
-      const date  = receipt.date || new Date().toISOString().split("T")[0];
+      const date  = normalizeReceiptDate(receipt.date);
       const rawText = receipt.ocr_text || receipt.raw_text || "";
       const merchantName = receipt.merchant_name || "";
       const receiptPaymentMethod = receipt.payment_method || null;
+
+      const serviceCharge = typeof receipt.service_charge === "number" ? receipt.service_charge : 0;
+      const taxAmount = typeof receipt.tax === "number" ? receipt.tax : 0;
 
       const category = detectCategory(rawText);
       const paymentMethod = detectPaymentMethod(rawText, receiptPaymentMethod);
@@ -538,6 +703,10 @@ const debtHealth = useMemo(() => {
             date,
             category,
             paymentMethod,
+            subtotal: receipt.sub_total != null ? String(receipt.sub_total) : "",
+            serviceCharge: serviceCharge ? String(serviceCharge) : "",
+            tax: taxAmount ? String(taxAmount) : "",
+            grandTotal: String(total),
           },
         });
       } else {
@@ -556,6 +725,8 @@ const debtHealth = useMemo(() => {
     } catch (error) {
       console.error("❌ Error processing receipt:", error);
       Alert.alert("Error", "Failed to process the receipt. Try again.");
+    } finally {
+      setIsScanningReceipt(false);
     }
   };
 
@@ -633,7 +804,7 @@ const debtHealth = useMemo(() => {
                   </TouchableOpacity>
                 </View>
 
-                {behaviourReport && (
+                {behaviourReport && behaviourReport.totals && (
                   <View style={styles.trendContainer}>
                     <View style={[
                       styles.trendBadge,
@@ -845,6 +1016,16 @@ const debtHealth = useMemo(() => {
           )}
         </View>
       </ScrollView>
+
+      {isScanningReceipt && (
+        <View style={styles.scanOverlay}>
+          <View style={styles.scanOverlayInner}>
+            <ActivityIndicator size="large" color="#ffffff" />
+            <Text style={styles.scanOverlayText}>Reading your receipt...</Text>
+            <Text style={styles.scanOverlaySubtext}>This usually takes a few seconds.</Text>
+          </View>
+        </View>
+      )}
 
       <BottomNav />
     </SafeAreaView>
@@ -1088,6 +1269,38 @@ logoutFab: {
     color: "#1E3932",
     fontWeight: "800",
     fontSize: 12,
+  },
+  scanOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 999,
+  },
+  scanOverlayInner: {
+    backgroundColor: "#1E3932",
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderRadius: 16,
+    alignItems: "center",
+    width: "75%",
+  },
+  scanOverlayText: {
+    marginTop: 12,
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  scanOverlaySubtext: {
+    marginTop: 6,
+    color: "#C9EAD6",
+    fontSize: 12,
+    textAlign: "center",
   },
 
 });

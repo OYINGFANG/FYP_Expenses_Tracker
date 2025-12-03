@@ -48,7 +48,7 @@ const Table: React.FC<TableProps> = ({ data, fieldLabels, actions, sortField, so
                 useFlexWidths ? styles.headerCellFlex : { width: regularColumnWidth }
               ]}
             >
-              <Text style={styles.headerText} numberOfLines={1} ellipsizeMode="tail">
+              <Text style={styles.headerText}>
                 <FormattedMessage id={field.titleKey} />
               </Text>
             </View>
@@ -77,7 +77,11 @@ const Table: React.FC<TableProps> = ({ data, fieldLabels, actions, sortField, so
                     useFlexWidths ? styles.cellFlex : { width: regularColumnWidth }
                   ]}
                 >
-                  <Text style={styles.cellText} numberOfLines={isTextField ? undefined : 1}>
+                  <Text 
+                    style={styles.cellText} 
+                    numberOfLines={isTextField ? undefined : 1}
+                    ellipsizeMode="tail"
+                  >
                     {typeof row[field.slug] === 'boolean' ? (row[field.slug] ? 'Yes' : 'No') : String(row[field.slug] || '—')}
                   </Text>
                 </View>
@@ -111,8 +115,9 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F59E0B',
   },
   headerCell: {
-    padding: 12,
-    minWidth: 100,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    minWidth: 80,
     borderRightWidth: 1,
     borderRightColor: '#374151',
   },
@@ -122,32 +127,33 @@ const styles = StyleSheet.create({
     minWidth: 80,
   },
   actionsHeaderCellFlex: {
-    flexBasis: '35%',
-    flexGrow: 0,
-    flexShrink: 0,
-    minWidth: 150,
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 100,
   },
   headerText: {
     color: '#FDE68A',
     fontWeight: '800',
-    fontSize: 14,
+    fontSize: 12,
     textTransform: 'uppercase',
+    flexShrink: 1,
   },
   row: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
   },
   rowEven: {
     backgroundColor: '#F9FAFB',
   },
   cell: {
-    padding: 12,
-    minWidth: 100,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    minWidth: 80,
     borderRightWidth: 1,
     borderRightColor: '#E5E7EB',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'flex-start',
     flexWrap: 'wrap',
   },
@@ -158,10 +164,9 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   actionsCellFlex: {
-    flexBasis: '35%',
-    flexGrow: 0,
-    flexShrink: 0,
-    minWidth: 150,
+    flex: 1,
+    flexBasis: 0,
+    minWidth: 100,
   },
   actionsCell: {
     padding: 8,
@@ -172,6 +177,7 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     fontSize: 14,
     flexShrink: 1,
+    width: '100%',
   },
 });
 

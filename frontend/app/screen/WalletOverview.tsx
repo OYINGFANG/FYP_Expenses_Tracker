@@ -666,7 +666,7 @@ export default function Stats() {
         </View>
 
         {/* AI Spending Analysis Section */}
-        <View style={styles.aiAnalysisCard}>
+        {/* <View style={styles.aiAnalysisCard}>
           <View style={styles.aiAnalysisHeader}>
             <View style={styles.aiIconWrapper}>
               <Ionicons name="sparkles" size={20} color="#8B5CF6" />
@@ -702,7 +702,7 @@ export default function Stats() {
               <Text style={styles.aiGenerateBtnText}>Generate Analysis</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </View> */}
 
         <View style={{ height: 32 }} />
       </ScrollView>

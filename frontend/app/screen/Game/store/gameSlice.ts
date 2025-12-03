@@ -28,11 +28,11 @@ const getNewGameData = () => {
   // Normalize location to ensure consistency
   const normalizedLocation = String(initGameState.location).toLowerCase().trim();
   return {
-    ...initGameState,
-    id: `${new Date().getTime()}`,
+  ...initGameState,
+  id: `${new Date().getTime()}`,
     location: normalizedLocation,
     prices: getLocalPrices(normalizedLocation, 0),
-    capacity: getCapacity({}, {}),
+  capacity: getCapacity({}, {}),
   };
 };
 export const gameSlice = createSlice({

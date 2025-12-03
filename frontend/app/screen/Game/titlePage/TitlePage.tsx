@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignItems: "center",
     gap: 12,
-    marginTop: 220,
+    marginTop: 170,
     marginLeft: 20,
   },
   buttonContent: {

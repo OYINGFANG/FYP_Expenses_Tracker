@@ -126,75 +126,75 @@ const TravelModal: React.FC<Props> = ({
               <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
                 <View style={styles.content}>
                   <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.dayNumText}>
-                      <FormattedMessage
-                        id="travel__modal__day_num"
+                  <Text style={styles.dayNumText}>
+                    <FormattedMessage
+                      id="travel__modal__day_num"
                         values={{ 
                           dayNum: travelState.progress || 1, 
                           maxDays: travelState.routeDays || 1 
                         }}
-                      />
-                    </Text>
+                    />
+                  </Text>
                   </View>
 
                   {travelState.progress > 0 && (
                     <>
-                      <View style={styles.diceContainer}>
-                        <View style={styles.dieWrapper}>
-                          <DieOneDSix value={travelState.dice.encounterCheck1} idx={0} />
-                        </View>
-                        <View style={styles.dieWrapper}>
-                          <DieOneDSix value={travelState.dice.encounterCheck2} idx={1} />
-                        </View>
-                      </View>
+                  <View style={styles.diceContainer}>
+                    <View style={styles.dieWrapper}>
+                      <DieOneDSix value={travelState.dice.encounterCheck1} idx={0} />
+                    </View>
+                    <View style={styles.dieWrapper}>
+                      <DieOneDSix value={travelState.dice.encounterCheck2} idx={1} />
+                    </View>
+                  </View>
 
-                      <Animated.View
-                        style={[
-                          styles.dangerContainer,
-                          {
-                            opacity: travelTransitionStatus === '' ? 1 : 0,
-                          },
-                        ]}
-                      >
-                        <View style={styles.dangerContent}>
-                          {travelState.danger && (
-                            <View style={styles.iconContainer}>
-                              {getDangerIcon(travelState.danger.type)}
-                            </View>
-                          )}
-                          {travelState.danger && travelState.upgradeUsed && (
-                            <View style={styles.iconContainer}>
-                              <Ionicons name="shield-checkmark" size={64} color="#10B981" />
-                            </View>
-                          )}
+                  <Animated.View
+                    style={[
+                      styles.dangerContainer,
+                      {
+                        opacity: travelTransitionStatus === '' ? 1 : 0,
+                      },
+                    ]}
+                  >
+                    <View style={styles.dangerContent}>
+                      {travelState.danger && (
+                        <View style={styles.iconContainer}>
+                          {getDangerIcon(travelState.danger.type)}
+                        </View>
+                      )}
+                      {travelState.danger && travelState.upgradeUsed && (
+                        <View style={styles.iconContainer}>
+                          <Ionicons name="shield-checkmark" size={64} color="#10B981" />
+                        </View>
+                      )}
 
-                          <View style={styles.dangerTextContainer}>
-                            {!travelState.danger ? (
-                              <Text style={styles.dangerText}>
-                                <FormattedMessage id="travel__modal__danger__none" />
-                              </Text>
-                            ) : (
-                              <View>
-                                <Text style={styles.dangerText}>
+                      <View style={styles.dangerTextContainer}>
+                        {!travelState.danger ? (
+                          <Text style={styles.dangerText}>
+                            <FormattedMessage id="travel__modal__danger__none" />
+                          </Text>
+                        ) : (
+                          <View>
+                            <Text style={styles.dangerText}>
+                              <FormattedMessage
+                                id={`travel__modal__danger__${travelState.danger.type}${
+                                  travelState.upgradeUsed ? '_avoided' : ''
+                                }`}
+                              />
+                            </Text>
+                            {!travelState.upgradeUsed &&
+                              travelState.danger.effects.map((dangerEffect) => (
+                                <Text key={dangerEffect.type} style={styles.dangerText}>
                                   <FormattedMessage
-                                    id={`travel__modal__danger__${travelState.danger.type}${
-                                      travelState.upgradeUsed ? '_avoided' : ''
-                                    }`}
-                                  />
+                                    id={`travel__modal__danger__effect__${dangerEffect.type}__${dangerEffect.severity}`}
+                                  />{' '}
                                 </Text>
-                                {!travelState.upgradeUsed &&
-                                  travelState.danger.effects.map((dangerEffect) => (
-                                    <Text key={dangerEffect.type} style={styles.dangerText}>
-                                      <FormattedMessage
-                                        id={`travel__modal__danger__effect__${dangerEffect.type}__${dangerEffect.severity}`}
-                                      />{' '}
-                                    </Text>
-                                  ))}
-                              </View>
-                            )}
+                              ))}
                           </View>
-                        </View>
-                      </Animated.View>
+                        )}
+                      </View>
+                    </View>
+                  </Animated.View>
                     </>
                   )}
 

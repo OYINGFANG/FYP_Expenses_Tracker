@@ -6,10 +6,8 @@ import {
   SafeAreaView,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
   TextInput,
   Modal,
-  Share,
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,10 +25,8 @@ import {
 import { getCurrentMonthKey } from "../utils/budgetUtils";
 
 /** ---------- Visual constants ---------- */
-const { width } = Dimensions.get("window");
-const BRAND_DARK = "#1E3932";
-const BRAND_GREEN = "#22C55E";
-const BRAND_BG_GRADIENT = ["#1E5449", "#154C42", "#0F3D35"] as const;
+const BRAND_DARK = "#020617";
+const BRAND_GREEN = "#16A34A";
 const CARD_BG = "#FFFFFF";
 const LINE_SOFT = "#E5E7EB";
 const RED = "#EF4444";
@@ -77,7 +73,7 @@ const CATEGORY_ICONS: Record<(typeof CATEGORY_ORDER)[number], any> = {
   Others: "ellipsis-horizontal",
 };
 
-/** ---------- Payment methods (edit as you use in your data) ---------- */
+/** ---------- Payment methods ---------- */
 const METHODS = ["All", "Cash", "Card", "Wallet", "Bank"] as const;
 
 /** ---------- Helpers ---------- */
@@ -156,10 +152,12 @@ function Row({
   r,
   onPress,
   onLongPress,
+  balanceAfter,
 }: {
   r: ExpenseRecord;
   onPress?: () => void;
   onLongPress?: () => void;
+  balanceAfter?: number;
 }) {
   const cat = (r.category && CATEGORY_ORDER.includes(r.category as any)
     ? (r.category as (typeof CATEGORY_ORDER)[number])
@@ -191,6 +189,9 @@ function Row({
 
       <View style={styles.rowRight}>
         <Text style={[styles.rowAmount, { color: RED }]}>-{fmtRM(amount)}</Text>
+        {typeof balanceAfter === "number" && (
+          <Text style={styles.rowBalanceText}>Balance: {fmtRM(balanceAfter)}</Text>
+        )}
         {Boolean((r as any).paymentMethod) && (
           <View style={styles.paymentBadge}>
             <Text style={styles.paymentText}>{(r as any).paymentMethod}</Text>
@@ -223,12 +224,7 @@ function CategoryBreakdown({ expenses }: { expenses: ExpenseRecord[] }) {
       .slice(0, 5);
   }, [expenses]);
 
-  const totalExpense = useMemo(
-    () => expenses.reduce((s, r) => s + (Number(r.amount) || 0), 0),
-    [expenses]
-  );
-
-  if (categoryData.length === 0) return null;
+  if (!categoryData.length) return null;
 
   return (
     <View style={styles.categoryCard}>
@@ -321,7 +317,8 @@ function SpendingInsights({
           <View style={styles.insightHighlightRow}>
             <Ionicons name="trending-up" size={16} color={RED} />
             <Text style={styles.insightHighlightText}>
-              Highest spending on day {insights.highestDay.day}: {fmtRM(insights.highestDay.amount)}
+              Highest spending on day {insights.highestDay.day}:{" "}
+              {fmtRM(insights.highestDay.amount)}
             </Text>
           </View>
         </View>
@@ -334,19 +331,18 @@ function SpendingInsights({
 export default function ExpensesDetail() {
   const router = useRouter();
 
-  // data
   const [monthKey, setMonthKey] = useState<string>(getCurrentMonthKey());
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [incomes, setIncomes] = useState<IncomeRecord[]>([]);
 
-  // UI state
   const [viewMode, setViewMode] = useState<"list" | "insights">("list");
   const [search, setSearch] = useState("");
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
   const [method, setMethod] = useState<(typeof METHODS)[number]>("All");
-  const [sort, setSort] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">("date-desc");
+  const [sort, setSort] = useState<"date-desc" | "date-asc" | "amount-desc" | "amount-asc">(
+    "date-desc"
+  );
 
-  // record modal
   const [openModal, setOpenModal] = useState(false);
   const [selected, setSelected] = useState<ExpenseRecord | null>(null);
 
@@ -426,14 +422,37 @@ export default function ExpensesDetail() {
     return arr;
   }, [monthExpenses, search, selectedCats, method, sort]);
 
+  /** ---------- Running balance per expense ---------- */
+  const runningBalanceById = useMemo(() => {
+    // Sort all visible expenses in chronological order
+    const sorted = [...filteredExpenses].sort((a, b) =>
+      (a.dateISO || "").localeCompare(b.dateISO || "")
+    );
+
+    let cumulativeExpense = 0;
+    const map: Record<string, number> = {};
+
+    sorted.forEach((r) => {
+      const amt = Number(r.amount) || 0;
+      cumulativeExpense += amt;
+      const remaining = totalIncome - cumulativeExpense;
+      if (r.id) {
+        map[r.id] = remaining;
+      }
+    });
+
+    return map;
+  }, [filteredExpenses, totalIncome]);
+
   /** ---------- Grouped for list ---------- */
   const grouped = useMemo(() => {
     const byDay: Record<string, ExpenseRecord[]> = {};
     filteredExpenses.forEach((r) => {
       const d = new Date(r.dateISO);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-        d.getDate()
-      ).padStart(2, "0")}`;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(d.getDate()).padStart(2, "0")}`;
       if (!byDay[key]) byDay[key] = [];
       byDay[key].push(r);
     });
@@ -462,177 +481,137 @@ export default function ExpensesDetail() {
     setSort("date-desc");
   };
 
-  const onShareCSV = async () => {
-    try {
-      const csv = makeCSV(filteredExpenses);
-      await Share.share({ message: csv });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   const openRecord = (r: ExpenseRecord) => {
     setSelected(r);
     setOpenModal(true);
   };
 
   const handleDelete = () => {
-    // TODO: Replace with your real delete logic (e.g. Firestore delete by id)
     setOpenModal(false);
     Alert.alert("Delete", "Implement deleteExpenseRecord() for your backend.");
   };
 
   const handleEdit = () => {
     setOpenModal(false);
-    // Navigate to your edit screen. Change the path to your real editor route.
     router.push({ pathname: "/screen/AddRecord", params: { editId: selected?.id || "" } });
   };
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <LinearGradient colors={BRAND_BG_GRADIENT} style={StyleSheet.absoluteFill} />
-
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={22} color="#fff" />
+    <SafeAreaView style={styles.screen}>
+      {/* Top app bar */}
+      <View style={styles.appBar}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.appBarIconBtn}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
         </TouchableOpacity>
 
-        <View style={styles.monthNav}>
-          <TouchableOpacity onPress={() => setMonthKey((k) => addMonths(k, -1))} style={styles.monthBtn}>
-            <Ionicons name="chevron-back" size={16} color={BRAND_DARK} />
-          </TouchableOpacity>
-          <Text style={styles.monthText}>{monthKeyToLabel(monthKey)}</Text>
-          <TouchableOpacity onPress={() => setMonthKey((k) => addMonths(k, +1))} style={styles.monthBtn}>
-            <Ionicons name="chevron-forward" size={16} color={BRAND_DARK} />
-          </TouchableOpacity>
+        <View style={styles.appBarCenter}>
+          <Text style={styles.appBarTitle}>Expenses</Text>
+          <View style={styles.appBarMonthRow}>
+            <TouchableOpacity
+              onPress={() => setMonthKey((k) => addMonths(k, -1))}
+              style={styles.monthArrowBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-back" size={14} color={MUTED} />
+            </TouchableOpacity>
+
+            <View style={styles.appBarMonth}>
+              <Ionicons name="calendar-outline" size={14} color={MUTED} />
+              <Text style={styles.appBarMonthText}>{monthKeyToLabel(monthKey)}</Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setMonthKey((k) => addMonths(k, 1))}
+              style={styles.monthArrowBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="chevron-forward" size={14} color={MUTED} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <TouchableOpacity style={styles.headerBtn} onPress={onShareCSV} activeOpacity={0.7}>
-            <Ionicons name="share-social-outline" size={20} color="#fff" />
-          </TouchableOpacity>
+        <View style={styles.appBarRight}>
           <TouchableOpacity
-            style={styles.headerBtn}
+            style={styles.appBarIconBtn}
             activeOpacity={0.7}
             onPress={() => setViewMode((v) => (v === "list" ? "insights" : "list"))}
           >
-            <Ionicons name={viewMode === "list" ? "analytics" : "list"} size={20} color="#fff" />
+            <Ionicons
+              name={viewMode === "list" ? "analytics-outline" : "list-outline"}
+              size={20}
+              color={BRAND_DARK}
+            />
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 96 }}>
+      <ScrollView contentContainerStyle={styles.content}>
         {/* Summary */}
-        <View style={styles.summaryCardWrapper}>
-          <LinearGradient colors={["#FFFFFF", "#F9FAFB"]} style={styles.summaryCard}>
-            <View style={styles.summaryTop}>
-              <Text style={styles.summaryMainLabel}>Total Balance</Text>
-              <Text style={[styles.summaryMainValue, { color: total >= 0 ? BRAND_GREEN : RED }]}>
-                {total >= 0 ? fmtRM(total) : `-${fmtRM(total)}`}
-              </Text>
-              {totalIncome > 0 && (
-                <View
-                  style={[
-                    styles.savingsRateBadge,
-                    { backgroundColor: (savingsRate >= 0 ? BRAND_GREEN : RED) + "15" },
-                  ]}
-                >
-                  <Ionicons
-                    name={savingsRate >= 0 ? "trending-up" : "trending-down"}
-                    size={12}
-                    color={savingsRate >= 0 ? BRAND_GREEN : RED}
-                  />
-                  <Text
-                    style={[
-                      styles.savingsRateText,
-                      { color: savingsRate >= 0 ? BRAND_GREEN : RED },
-                    ]}
-                  >
-                    {savingsRate.toFixed(1)}% savings rate
-                  </Text>
-                </View>
-              )}
+        <LinearGradient
+          colors={["#FEF2F2", "#FFF7ED"]}
+          style={styles.summaryCard}
+        >
+          <View style={styles.summaryHeaderRow}>
+            <View>
+              <Text style={styles.summaryLabel}>Total Expenses</Text>
+              <Text style={styles.summaryValue}>{fmtRM(totalExpense)}</Text>
             </View>
-
-            <View style={styles.summaryDivider} />
-
-            <View style={styles.summaryBottom}>
-              <View style={styles.summaryBottomItem}>
-                <View style={styles.summaryIconWrap}>
-                  <Ionicons name="arrow-down-circle" size={20} color={RED} />
-                </View>
-                <View>
-                  <Text style={styles.summaryBottomLabel}>Expenses</Text>
-                  <Text style={[styles.summaryBottomValue, { color: RED }]}>{fmtRM(totalExpense)}</Text>
-                </View>
-              </View>
-
-              <View style={styles.summaryBottomItem}>
-                <View style={styles.summaryIconWrap}>
-                  <Ionicons name="arrow-up-circle" size={20} color={BRAND_GREEN} />
-                </View>
-                <View>
-                  <Text style={styles.summaryBottomLabel}>Income</Text>
-                  <Text style={[styles.summaryBottomValue, { color: BRAND_GREEN }]}>
-                    {fmtRM(totalIncome)}
-                  </Text>
-                </View>
-              </View>
+            <View
+              style={[
+                styles.summaryPill,
+                { backgroundColor: "rgba(239, 68, 68, 0.12)" },
+              ]}
+            >
+              <Ionicons name="cash-outline" size={14} color={RED} />
+              <Text style={[styles.summaryPillText, { color: RED }]}>This month</Text>
             </View>
-          </LinearGradient>
-        </View>
+          </View>
+        </LinearGradient>
 
         {/* Search & filters */}
-        <View style={styles.toolbar}>
-          <View style={styles.searchWrap}>
-            <Ionicons name="search" size={16} color={MUTED} />
+        <View style={styles.filtersCard}>
+          <View style={styles.searchRow}>
+            <Ionicons name="search" size={16} color="#9CA3AF" />
             <TextInput
               value={search}
               onChangeText={setSearch}
               placeholder="Search amount, note, category..."
-              placeholderTextColor={MUTED}
+              placeholderTextColor="#9CA3AF"
               style={styles.searchInput}
             />
             {!!(search || selectedCats.size || method !== "All" || sort !== "date-desc") && (
               <TouchableOpacity onPress={clearFilters} style={styles.clearBtn}>
-                <Ionicons name="close-circle" size={16} color={MUTED} />
+                <Ionicons name="close-circle" size={16} color="#9CA3AF" />
               </TouchableOpacity>
             )}
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            <Chip
-              label={`Sort: ${
-                sort === "date-desc"
-                  ? "Date ↓"
-                  : sort === "date-asc"
-                  ? "Date ↑"
-                  : sort === "amount-desc"
-                  ? "Amount ↓"
-                  : "Amount ↑"
-              }`}
-              onPress={() => {
-                const order: typeof sort[] = ["date-desc", "date-asc", "amount-desc", "amount-asc"];
-                setSort(order[(order.indexOf(sort) + 1) % order.length]);
-              }}
-              active
-            />
-            {METHODS.map((m) => (
-              <Chip
-                key={m}
-                label={m}
-                active={method === m}
-                onPress={() => setMethod(m)}
-                compact
-              />
-            ))}
-          </ScrollView>
+          <View style={styles.filtersRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8 }}
+            >
+              {METHODS.map((m) => (
+                <Chip
+                  key={m}
+                  label={m}
+                  active={method === m}
+                  onPress={() => setMethod(m)}
+                  compact
+                />
+              ))}
+            </ScrollView>
+          </View>
 
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, marginTop: 8 }}
+            contentContainerStyle={styles.categoryChipsRow}
           >
             {CATEGORY_ORDER.map((c) => (
               <Chip
@@ -653,28 +632,31 @@ export default function ExpensesDetail() {
             <CategoryBreakdown expenses={filteredExpenses} />
           </>
         ) : (
-          <View style={styles.listWrap}>
+          <View style={styles.listContainer}>
             {grouped.length === 0 ? (
-              <View style={styles.emptyCard}>
+              <View style={styles.emptyState}>
                 <View style={styles.emptyIconWrap}>
-                  <Ionicons name="wallet-outline" size={48} color={MUTED} />
+                  <Ionicons name="wallet-outline" size={42} color="#9CA3AF" />
                 </View>
-                <Text style={styles.emptyTitle}>No expenses match</Text>
-                <Text style={styles.emptyText}>Try adjusting filters or add a new record.</Text>
+                <Text style={styles.emptyTitle}>No transactions</Text>
+                <Text style={styles.emptyText}>
+                  Adjust your filters or add a new record to see it here.
+                </Text>
               </View>
             ) : (
               grouped.map((g) => (
-                <View key={g.dayKey} style={styles.daySection}>
+                <View key={g.dayKey} style={styles.dayGroup}>
                   <View style={styles.dayHeaderRow}>
                     <Text style={styles.dayHeaderText}>{g.header}</Text>
-                    <View style={styles.dayHeaderBadge}>
-                      <Text style={styles.dayHeaderTotal}>{fmtRM(g.dayTotal)}</Text>
+                    <View style={styles.dayTotalPill}>
+                      <Text style={styles.dayTotalText}>{fmtRM(g.dayTotal)}</Text>
                     </View>
                   </View>
                   {g.items.map((r) => (
                     <Row
                       key={r.id || r.dateISO + String(r.amount)}
                       r={r}
+                      balanceAfter={r.id ? runningBalanceById[r.id] : undefined}
                       onPress={() => openRecord(r)}
                       onLongPress={() => openRecord(r)}
                     />
@@ -690,15 +672,20 @@ export default function ExpensesDetail() {
       <TouchableOpacity
         activeOpacity={0.9}
         style={styles.fab}
-        onPress={() => router.push("/screen/AddRecord")} // change to your add-expense route
+        onPress={() => router.push("/screen/AddRecord")}
       >
-        <LinearGradient colors={["#A7F3D0", "#6EE7B7"] as const} style={styles.fabGrad}>
-          <Ionicons name="add" size={26} color="#065F46" />
+        <LinearGradient colors={["#22C55E", "#16A34A"]} style={styles.fabGrad}>
+          <Ionicons name="add" size={26} color="#ECFDF5" />
         </LinearGradient>
       </TouchableOpacity>
 
       {/* Record modal */}
-      <Modal visible={openModal} transparent animationType="slide" onRequestClose={() => setOpenModal(false)}>
+      <Modal
+        visible={openModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setOpenModal(false)}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -713,7 +700,9 @@ export default function ExpensesDetail() {
                 <View style={styles.modalBody}>
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Date</Text>
-                    <Text style={styles.modalValue}>{new Date(selected.dateISO).toLocaleString()}</Text>
+                    <Text style={styles.modalValue}>
+                      {new Date(selected.dateISO).toLocaleString()}
+                    </Text>
                   </View>
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Category</Text>
@@ -721,7 +710,9 @@ export default function ExpensesDetail() {
                   </View>
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Amount</Text>
-                    <Text style={[styles.modalValue, { color: RED }]}>-{fmtRM(Number(selected.amount) || 0)}</Text>
+                    <Text style={[styles.modalValue, { color: RED }]}>
+                      -{fmtRM(Number(selected.amount) || 0)}
+                    </Text>
                   </View>
                   {!!(selected as any).paymentMethod && (
                     <View style={styles.modalRow}>
@@ -738,11 +729,17 @@ export default function ExpensesDetail() {
                 </View>
 
                 <View style={styles.modalActions}>
-                  <TouchableOpacity style={[styles.modalBtn, styles.modalBtnGhost]} onPress={handleDelete}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.modalBtnGhost]}
+                    onPress={handleDelete}
+                  >
                     <Ionicons name="trash" size={16} color={RED} />
                     <Text style={[styles.modalBtnText, { color: RED }]}>Delete</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={handleEdit}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, styles.modalBtnPrimary]}
+                    onPress={handleEdit}
+                  >
                     <Ionicons name="create-outline" size={16} color="#fff" />
                     <Text style={[styles.modalBtnText, { color: "#fff" }]}>Edit</Text>
                   </TouchableOpacity>
@@ -758,78 +755,189 @@ export default function ExpensesDetail() {
 
 /** ---------- Styles ---------- */
 const styles = StyleSheet.create({
-  header: {
+  screen: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+  },
+
+  content: {
+    paddingBottom: 120,
+  },
+
+  // App bar
+  appBar: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 12,
+    paddingBottom: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
   },
-  headerBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  monthNav: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: CARD_BG,
-    borderRadius: 18,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    ...shadow(2, 0.1),
-  },
-  monthBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F7FAF9",
-  },
-  monthText: { fontSize: 15, fontWeight: "800", color: BRAND_DARK, marginHorizontal: 12 },
-
-  summaryCardWrapper: { marginHorizontal: 16, marginTop: 16, borderRadius: 20, ...shadow(4, 0.12) },
-  summaryCard: { borderRadius: 20, paddingVertical: 20, paddingHorizontal: 20 },
-  summaryTop: { alignItems: "center", paddingBottom: 14 },
-  summaryMainLabel: { fontSize: 13, fontWeight: "700", color: MUTED, marginBottom: 6, letterSpacing: 0.5 },
-  summaryMainValue: { fontSize: 32, fontWeight: "900", letterSpacing: -0.5, marginBottom: 8 },
-  savingsRateBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  savingsRateText: { fontSize: 12, fontWeight: "700" },
-  summaryDivider: { height: 1, backgroundColor: LINE_SOFT, marginVertical: 4 },
-  summaryBottom: { flexDirection: "row", justifyContent: "space-around", paddingTop: 16 },
-  summaryBottomItem: { flexDirection: "row", alignItems: "center", gap: 10 },
-  summaryIconWrap: {
+  appBarIconBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
-    backgroundColor: "#F7FAF9",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "#FFFFFF",
   },
-  summaryBottomLabel: { fontSize: 12, fontWeight: "600", color: MUTED, marginBottom: 2 },
-  summaryBottomValue: { fontSize: 16, fontWeight: "800" },
-
-  toolbar: { marginHorizontal: 16, marginTop: 16 },
-  searchWrap: {
+  appBarCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
+  appBarTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  appBarMonthRow: {
+    marginTop: 4,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    ...shadow(1, 0.06),
+    gap: 6,
   },
-  searchInput: { flex: 1, paddingHorizontal: 8, color: BRAND_DARK },
-  clearBtn: { padding: 4 },
+  monthArrowBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E5E7EB",
+  },
+  appBarMonth: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#E5E7EB",
+  },
+  appBarMonthText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: MUTED,
+  },
+  appBarRight: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  // Summary
+  summaryCard: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    borderRadius: 20,
+    padding: 18,
+  },
+  summaryHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280",
+    letterSpacing: 0.4,
+  },
+  summaryValue: {
+    marginTop: 6,
+    fontSize: 30,
+    fontWeight: "900",
+    color: BRAND_DARK,
+    letterSpacing: -0.4,
+  },
+  summaryPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  summaryPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  // Filters
+  filtersCard: {
+    marginTop: 16,
+    marginHorizontal: 16,
+    borderRadius: 18,
+    backgroundColor: CARD_BG,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  searchInput: {
+    flex: 1,
+    paddingHorizontal: 8,
+    color: "#020617",
+    fontSize: 13,
+  },
+  clearBtn: {
+    paddingLeft: 4,
+  },
+  filtersRow: {
+    marginTop: 10,
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  filtersLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#6B7280",
+    marginBottom: 2,
+  },
+  sortChipRow: {
+    width: "100%",
+  },
+  sortChipGroup: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  sortChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#F3F4F6",
+  },
+  sortChipActive: {
+    backgroundColor: "#E5E7EB",
+  },
+  sortChipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B7280",
+  },
+  sortChipTextActive: {
+    color: "#0B1120",
+  },
+  categoryChipsRow: {
+    gap: 8,
+    marginTop: 10,
+  },
 
   chip: {
     paddingHorizontal: 12,
@@ -837,78 +945,347 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
   },
-  chipCompact: { paddingVertical: 6 },
-  chipInactive: { backgroundColor: "#fff", borderColor: LINE_SOFT },
-  chipActive: { backgroundColor: BRAND_DARK, borderColor: BRAND_DARK },
-  chipText: { fontSize: 12, fontWeight: "700", color: BRAND_DARK },
-  chipTextActive: { color: "#fff" },
+  chipCompact: {
+    paddingVertical: 6,
+  },
+  chipInactive: {
+    backgroundColor: "#fff",
+    borderColor: LINE_SOFT,
+  },
+  chipActive: {
+    backgroundColor: BRAND_DARK,
+    borderColor: BRAND_DARK,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: BRAND_DARK,
+  },
+  chipTextActive: {
+    color: "#fff",
+  },
 
+  // Category & insights cards
   categoryCard: {
     marginHorizontal: 16,
     marginTop: 16,
     backgroundColor: CARD_BG,
     borderRadius: 20,
     padding: 18,
-    ...shadow(3, 0.08),
+    ...shadow(2, 0.06),
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
-  cardTitle: { fontSize: 16, fontWeight: "800", color: BRAND_DARK },
-  categoryRow: { paddingVertical: 12 },
-  categoryLeft: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
-  categoryDot: { width: 10, height: 10, borderRadius: 5 },
-  categoryName: { fontSize: 14, fontWeight: "700", color: BRAND_DARK },
-  categoryRight: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  categoryAmount: { fontSize: 15, fontWeight: "800", color: BRAND_DARK },
-  categoryPercent: { fontSize: 13, fontWeight: "700", color: MUTED },
-  categoryDivider: { height: 1, backgroundColor: LINE_SOFT, marginTop: 12 },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  categoryRow: {
+    paddingVertical: 12,
+  },
+  categoryLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 6,
+  },
+  categoryDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  categoryName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: BRAND_DARK,
+  },
+  categoryRight: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  categoryAmount: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  categoryPercent: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: MUTED,
+  },
+  categoryDivider: {
+    height: 1,
+    backgroundColor: LINE_SOFT,
+    marginTop: 12,
+  },
 
-  insightsCard: { marginHorizontal: 16, marginTop: 16, backgroundColor: CARD_BG, borderRadius: 20, padding: 18, ...shadow(3, 0.08) },
-  insightsGrid: { flexDirection: "row", gap: 12, marginTop: 12 },
-  insightItem: { flex: 1, backgroundColor: "#F7FAF9", borderRadius: 14, padding: 14 },
-  insightLabel: { fontSize: 12, fontWeight: "600", color: MUTED, marginBottom: 6 },
-  insightValue: { fontSize: 18, fontWeight: "900", color: BRAND_DARK },
-  insightHighlight: { marginTop: 14, backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, borderLeftWidth: 3, borderLeftColor: RED },
-  insightHighlightRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  insightHighlightText: { fontSize: 13, fontWeight: "600", color: BRAND_DARK, flex: 1 },
+  insightsCard: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: CARD_BG,
+    borderRadius: 20,
+    padding: 18,
+    ...shadow(2, 0.06),
+  },
+  insightsGrid: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+  },
+  insightItem: {
+    flex: 1,
+    backgroundColor: "#F7FAF9",
+    borderRadius: 14,
+    padding: 14,
+  },
+  insightLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: MUTED,
+    marginBottom: 6,
+  },
+  insightValue: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: BRAND_DARK,
+  },
+  insightHighlight: {
+    marginTop: 14,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: RED,
+  },
+  insightHighlightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  insightHighlightText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: BRAND_DARK,
+    flex: 1,
+  },
 
-  listWrap: { marginTop: 16, marginHorizontal: 16, marginBottom: 8 },
-  daySection: { backgroundColor: CARD_BG, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 12, ...shadow(2, 0.06) },
-  dayHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  dayHeaderText: { fontSize: 14, fontWeight: "800", color: BRAND_DARK },
-  dayHeaderBadge: { backgroundColor: RED + "12", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  dayHeaderTotal: { fontSize: 13, fontWeight: "800", color: RED },
+  // List
+  listContainer: {
+    marginTop: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  dayGroup: {
+    backgroundColor: CARD_BG,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  dayHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  dayHeaderText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  dayTotalPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+  },
+  dayTotalText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: RED,
+  },
 
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: LINE_SOFT + "60" },
-  iconWrap: { width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", marginRight: 12 },
-  rowMid: { flex: 1 },
-  rowTitle: { fontSize: 15, fontWeight: "700", color: BRAND_DARK, marginBottom: 2 },
-  rowSub: { fontSize: 12, color: MUTED, marginTop: 2 },
-  rowRight: { alignItems: "flex-end" },
-  rowAmount: { fontSize: 15, fontWeight: "800", marginBottom: 4 },
-  paymentBadge: { backgroundColor: "#F7FAF9", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  paymentText: { fontSize: 11, fontWeight: "600", color: MUTED },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: LINE_SOFT + "60",
+  },
+  iconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  rowMid: {
+    flex: 1,
+  },
+  rowTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: BRAND_DARK,
+    marginBottom: 2,
+  },
+  rowSub: {
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 2,
+  },
+  rowRight: {
+    alignItems: "flex-end",
+  },
+  rowAmount: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  rowBalanceText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: MUTED,
+    marginTop: 2,
+  },
+  paymentBadge: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  paymentText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: MUTED,
+  },
 
-  emptyCard: { backgroundColor: CARD_BG, borderRadius: 20, padding: 40, alignItems: "center", ...shadow(2, 0.06) },
-  emptyIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: "#F7FAF9", alignItems: "center", justifyContent: "center", marginBottom: 16 },
-  emptyTitle: { fontSize: 18, fontWeight: "800", color: BRAND_DARK, marginBottom: 6 },
-  emptyText: { color: MUTED, fontWeight: "600", textAlign: "center" },
+  // Empty state
+  emptyState: {
+    marginTop: 32,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    padding: 24,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  emptyIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: BRAND_DARK,
+    marginBottom: 4,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: MUTED,
+    textAlign: "center",
+  },
 
-  fab: { position: "absolute", right: 18, bottom: 24, ...shadow(6, 0.18) },
-  fabGrad: { width: 58, height: 58, borderRadius: 32, alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#154C42" },
+  // FAB
+  fab: {
+    position: "absolute",
+    right: 18,
+    bottom: 24,
+    shadowColor: "#22C55E",
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  fabGrad: {
+    width: 58,
+    height: 58,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#DCFCE7",
+  },
 
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
-  modalCard: { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, maxHeight: "70%" },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  modalTitle: { fontSize: 16, fontWeight: "800", color: BRAND_DARK },
-  modalBody: { marginTop: 10, gap: 10 },
-  modalRow: { flexDirection: "row", justifyContent: "space-between" },
-  modalLabel: { color: MUTED, fontWeight: "700" },
-  modalValue: { color: BRAND_DARK, fontWeight: "700", maxWidth: width * 0.55, textAlign: "right" },
-  modalActions: { flexDirection: "row", gap: 10, marginTop: 16, justifyContent: "flex-end" },
-  modalBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
-  modalBtnGhost: { backgroundColor: "#FFF1F2" },
-  modalBtnPrimary: { backgroundColor: BRAND_DARK },
-  modalBtnText: { fontWeight: "800" },
+  // Modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    maxHeight: "70%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  modalBody: {
+    marginTop: 10,
+    gap: 10,
+  },
+  modalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  modalLabel: {
+    color: MUTED,
+    fontWeight: "700",
+  },
+  modalValue: {
+    color: BRAND_DARK,
+    fontWeight: "700",
+    maxWidth: "60%",
+    textAlign: "right",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+    justifyContent: "flex-end",
+  },
+  modalBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  modalBtnGhost: {
+    backgroundColor: "#FFF1F2",
+  },
+  modalBtnPrimary: {
+    backgroundColor: BRAND_DARK,
+  },
+  modalBtnText: {
+    fontWeight: "800",
+  },
 });
 
 function shadow(height: number, opacity: number) {
