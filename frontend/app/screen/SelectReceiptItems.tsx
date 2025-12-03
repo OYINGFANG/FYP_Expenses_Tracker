@@ -30,6 +30,8 @@ export default function SelectReceiptItems() {
   const merchant = (params.merchant as string) || "Unknown Merchant";
   const date =
     (params.date as string) || new Date().toISOString().split("T")[0];
+  const inferredCategory = (params.category as string) || "Food";
+  const inferredPaymentMethod = (params.paymentMethod as string) || "Cash";
 
   const [cartItems, setCartItems] = useState<ReceiptItem[]>(
     items.map((item) => ({
@@ -89,7 +91,8 @@ export default function SelectReceiptItems() {
         amount: total.toString(),
         date: date as string,
         note: merchant as string,
-        category: "Food",
+        category: inferredCategory,
+        paymentMethod: inferredPaymentMethod,
       },
     });
   };

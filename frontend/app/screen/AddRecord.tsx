@@ -24,29 +24,47 @@ export default function AddRecord() {
   const [paymentMethod, setPaymentMethod] = useState("Cash"); // ✅ Added
   const slideAnim = useRef(new Animated.Value(0)).current;
   const params = useLocalSearchParams();
+  const prevParamsRef = useRef<string>("");
+
+  // Extract param values as strings for stable comparison
+  const amountParam = Array.isArray(params.amount) ? params.amount[0] : params.amount;
+  const dateParam = Array.isArray(params.date) ? params.date[0] : params.date;
+  const noteParam = Array.isArray(params.note) ? params.note[0] : params.note;
+  const categoryParam = Array.isArray(params.category) ? params.category[0] : params.category;
+  const merchantParam = Array.isArray(params.merchantName) ? params.merchantName[0] : params.merchantName;
+  const paymentMethodParam = Array.isArray(params.paymentMethod) ? params.paymentMethod[0] : params.paymentMethod;
+  
+  // Create a stable string key from params to detect changes
+  const paramsKey = `${amountParam || ""}|${dateParam || ""}|${noteParam || ""}|${categoryParam || ""}|${merchantParam || ""}|${paymentMethodParam || ""}`;
 
   useEffect(() => {
-    const amountValue = Array.isArray(params.amount) ? params.amount[0] : params.amount;
-    const dateValue = Array.isArray(params.date) ? params.date[0] : params.date;
-    const noteValue = Array.isArray(params.note) ? params.note[0] : params.note;
-    const categoryValue = Array.isArray(params.category) ? params.category[0] : params.category;
-    const merchantValue = Array.isArray(params.category) ? params.category[0] : params.category;
+    // Only update if params have actually changed
+    if (prevParamsRef.current === paramsKey) return;
+    prevParamsRef.current = paramsKey;
 
-    if (amountValue) setInputValue(amountValue);
-    if (dateValue) setSelectedDate(new Date(dateValue));
-    if (noteValue) setNote(noteValue);
-    if (categoryValue) {
-      if (isSavingsCategory(categoryValue)) {
+    if (amountParam) setInputValue(amountParam);
+    if (dateParam) setSelectedDate(new Date(dateParam));
+    if (noteParam) setNote(noteParam);
+    if (categoryParam) {
+      if (isSavingsCategory(categoryParam)) {
         Alert.alert(
           "Use Savings Module",
           "To save money, use the Savings screen instead of adding a 'Savings' expense."
         );
       } else {
-        setSelectedCategory(categoryValue);
+        setSelectedCategory(categoryParam);
       }
     }
-    if (merchantValue && !noteValue) setNote(merchantValue);
-  }, [params]);
+    if (merchantParam && !noteParam) setNote(merchantParam);
+
+    // Prefill payment method from params if it matches one of the known options
+    if (paymentMethodParam) {
+      const normalized = paymentMethodParam as string;
+      if (["Cash", "Bank", "Credit Card"].includes(normalized)) {
+        setPaymentMethod(normalized);
+      }
+    }
+  }, [paramsKey, amountParam, dateParam, noteParam, categoryParam, merchantParam, paymentMethodParam]);
 
   type CategoryOption = { icon: string; label: string; type: "MaterialIcons" | "FontAwesome5"; disabled?: boolean };
 

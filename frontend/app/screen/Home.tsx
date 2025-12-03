@@ -41,6 +41,43 @@ const detectCategory = (text: string): string => {
   return "Others";
 };
 
+// Very simple heuristic to guess payment method from receipt text
+const detectPaymentMethod = (text: string, receiptPaymentMethod?: string | null): string => {
+  // First, check if the receipt has a payment_method field
+  if (receiptPaymentMethod) {
+    const lower = (receiptPaymentMethod || "").toLowerCase();
+    if (lower.includes("cash")) return "Cash";
+    if (lower.includes("card") || lower.includes("credit") || lower.includes("debit")) return "Credit Card";
+    if (lower.includes("bank") || lower.includes("transfer") || lower.includes("qr") || lower.includes("duitnow")) return "Bank";
+  }
+
+  const lower = (text || "").toLowerCase();
+
+  // Look for QR payment methods (DuitNow, Touch n Go, GrabPay, etc.)
+  if (
+    lower.match(/duitnow|duit now|qr pay|qr code|qr payment|touch n go|touchngo|grabpay|grab pay|boost|favepay|wechat pay|alipay|paywave|pay wave/)
+  ) {
+    return "Bank";
+  }
+
+  // Look for common card keywords
+  if (
+    lower.match(/visa|mastercard|master card|credit card|debit card|card ending|amex|american express/)
+  ) {
+    return "Credit Card";
+  }
+
+  // Look for bank / online banking hints
+  if (
+    lower.match(/online banking|bank transfer|maybank|cimb|rhb|hong leong|public bank|bank islam/)
+  ) {
+    return "Bank";
+  }
+
+  // Fallback
+  return "Cash";
+};
+
 
 // =================== Component ===================
 export default function Home() {
@@ -479,20 +516,29 @@ const debtHealth = useMemo(() => {
       const receipt = result.receipts[0];
       const total = receipt.total || receipt.totalInclTax || "0.00";
       const date  = receipt.date || new Date().toISOString().split("T")[0];
-      const rawText = receipt.raw_text || "";
+      const rawText = receipt.ocr_text || receipt.raw_text || "";
       const merchantName = receipt.merchant_name || "";
+      const receiptPaymentMethod = receipt.payment_method || null;
 
       const category = detectCategory(rawText);
+      const paymentMethod = detectPaymentMethod(rawText, receiptPaymentMethod);
 
       console.log("💰 Total:", total);
       console.log("📅 Date:", date);
       console.log("🏷️ Category:", category);
+      console.log("🏦 Payment Method:", paymentMethod);
       console.log("🏪 Merchant:", merchantName);
 
       if (receipt.items && receipt.items.length > 0) {
         router.push({
           pathname: "/screen/SelectReceiptItems",
-          params: { items: JSON.stringify(receipt.items), merchant: merchantName, date },
+          params: {
+            items: JSON.stringify(receipt.items),
+            merchant: merchantName,
+            date,
+            category,
+            paymentMethod,
+          },
         });
       } else {
         router.push({
@@ -503,6 +549,7 @@ const debtHealth = useMemo(() => {
             note: (rawText as string).slice(0, 120),
             category,
             merchantName,
+            paymentMethod,
           },
         });
       }
@@ -642,8 +689,8 @@ const debtHealth = useMemo(() => {
                   <Text style={styles.actionText}>Scan</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.actionBox, { backgroundColor: "#FFF9C4" }]} onPress={() => router.push("/screen/Savings")}>
-                  <Ionicons name="scan-outline" size={28} color="#1E3932" />
+                <TouchableOpacity style={[styles.actionBox, { backgroundColor: "#BBDEFB" }]} onPress={() => router.push("/screen/Savings")}>
+                  <Ionicons name="wallet-outline" size={28} color="#1E3932" />
                   <Text style={styles.actionText}>Savings</Text>
                 </TouchableOpacity>
 
