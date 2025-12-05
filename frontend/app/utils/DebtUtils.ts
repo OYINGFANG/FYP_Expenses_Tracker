@@ -41,6 +41,7 @@ export type Debt = {
   currentBalance: number;
   monthlyPayment: number;
   targetDate?: string | null;
+  startDate?: string; // when the debt was taken (ISO)
   payments: Payment[];
   createdAt: string; // ISO
 };
@@ -87,6 +88,14 @@ export function subscribeUserDebts(
               ? x.created_at.toDate().toISOString()
               : new Date().toISOString();
 
+          const startDateISO = x.start_date
+            ? (typeof x.start_date?.toDate === "function"
+                ? x.start_date.toDate().toISOString()
+                : typeof x.start_date === "string"
+                ? x.start_date
+                : null)
+            : null;
+
           const debt: Debt = {
             id: d.id,
             name: x.name || "",
@@ -95,6 +104,7 @@ export function subscribeUserDebts(
             currentBalance: Number(x.current_balance) || 0,
             monthlyPayment: Number(x.monthly_payment) || 0,
             targetDate: x.target_date || null,
+            startDate: startDateISO || undefined,
             payments,
             createdAt: createdAtISO,
           };
@@ -121,6 +131,7 @@ export async function upsertDebt(userId: string, d: Partial<Debt>) {
     current_balance: Number(d.currentBalance) || 0,
     monthly_payment: Number(d.monthlyPayment) || 0,
     target_date: d.targetDate ?? null,
+    start_date: d.startDate ? new Date(d.startDate) : null,
     updated_at: serverTimestamp(),
   };
 

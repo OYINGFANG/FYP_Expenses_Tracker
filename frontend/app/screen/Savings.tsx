@@ -29,6 +29,7 @@ import {
   type SavingsContribution,
 } from "../utils/SavingsUtils";
 import { auth } from "../../firebase";
+import { syncSavingsReminderForGoal, cancelSavingsReminder } from "../utils/savingsNotificationUtils";
 
 /* ---------- Brand / UI ---------- */
 const BRAND_BG_GRADIENT = ["#1E5449", "#154C42", "#0F3D35"] as const;
@@ -39,41 +40,6 @@ const LINE_SOFT = "#E5E7EB";
 const MUTED = "#6B7280";
 const RED = "#EF4444";
 
-const CATEGORY_OPTIONS = [
-  "House",
-  "Emergency",
-  "Education",
-  "Travel",
-  "Vehicle",
-  "Wedding",
-  "Retirement",
-  "Business",
-  "Other",
-];
-
-const CATEGORY_COLORS: Record<string, string> = {
-  House: "#8B5CF6",
-  Emergency: "#EF4444",
-  Education: "#06B6D4",
-  Travel: "#F59E0B",
-  Vehicle: "#3B82F6",
-  Wedding: "#EC4899",
-  Retirement: "#10B981",
-  Business: "#6366F1",
-  Other: "#6B7280",
-};
-
-const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
-  House: "home",
-  Emergency: "warning",
-  Education: "school",
-  Travel: "airplane",
-  Vehicle: "car",
-  Wedding: "heart",
-  Retirement: "medal",
-  Business: "business",
-  Other: "ellipse",
-};
 
 /* ---------- Helpers ---------- */
 const fmtRM = (n: number) =>
@@ -121,20 +87,12 @@ function GoalRow({
   const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
   const monthsLeft = getMonthsRemaining(goal.targetAmount, goal.currentAmount, goal.monthlyTarget || null);
   const daysOverdue = getDaysOverdue(goal.deadline || null);
-  const category = goal.category || "Other";
-  const color = CATEGORY_COLORS[category] || CATEGORY_COLORS.Other;
-  const icon = CATEGORY_ICONS[category] || CATEGORY_ICONS.Other;
-
   return (
     <View style={styles.goalCard}>
       {/* Header */}
       <View style={styles.goalHeader}>
-        <View style={[styles.goalIcon, { backgroundColor: color + "22" }]}>
-          <Ionicons name={icon} size={22} color={color} />
-        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.goalName}>{goal.name}</Text>
-          {category && <Text style={styles.goalCategory}>{category}</Text>}
         </View>
         <View style={styles.goalActions}>
           <TouchableOpacity onPress={onEdit} style={styles.actionBtn}>
@@ -149,7 +107,7 @@ function GoalRow({
       {/* Progress Bar */}
       <View style={styles.progressSection}>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%`, backgroundColor: color }]} />
+          <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%`, backgroundColor: BRAND_GREEN }]} />
         </View>
         <Text style={styles.progressText}>
           {fmtRM(goal.currentAmount)} / {fmtRM(goal.targetAmount)} ({Math.round(progress)}%)
@@ -160,7 +118,7 @@ function GoalRow({
       <View style={styles.infoSection}>
         <View style={styles.infoItem}>
           <Text style={styles.infoLabel}>Remaining</Text>
-          <Text style={[styles.infoValue, { color }]}>
+          <Text style={styles.infoValue}>
             {fmtRM(Math.max(0, goal.targetAmount - goal.currentAmount))}
           </Text>
         </View>
@@ -227,21 +185,22 @@ function GoalEditor({
   const [targetAmount, setTargetAmount] = useState(String(initial?.targetAmount ?? ""));
   const [currentAmount, setCurrentAmount] = useState(String(initial?.currentAmount ?? "0"));
   const [monthlyTarget, setMonthlyTarget] = useState(String(initial?.monthlyTarget ?? ""));
-  const [category, setCategory] = useState(initial?.category || "Other");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [deadline, setDeadline] = useState<Date | null>(initial?.deadline || null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setShowDatePicker(false);
+      return;
+    }
     setName(initial?.name || "");
     setTargetAmount(String(initial?.targetAmount ?? ""));
     setCurrentAmount(String(initial?.currentAmount ?? "0"));
     setMonthlyTarget(String(initial?.monthlyTarget ?? ""));
-    setCategory(initial?.category || "Other");
     setNotes(initial?.notes || "");
     setDeadline(initial?.deadline || null);
+    setShowDatePicker(false);
   }, [open, initial]);
 
   const save = () => {
@@ -274,7 +233,6 @@ function GoalEditor({
       currentAmount: current,
       monthlyTarget: monthly && monthly > 0 ? monthly : null,
       deadline: deadline || null,
-      category: category || undefined,
       notes: notes.trim() || undefined,
       createdAt: initial?.createdAt || new Date(),
       updatedAt: new Date(),
@@ -304,22 +262,6 @@ function GoalEditor({
                 placeholder="e.g., House downpayment"
               />
 
-              <View style={{ marginTop: 12 }}>
-                <Text style={styles.inputLabel}>Category</Text>
-                <TouchableOpacity
-                  onPress={() => setShowCategoryPicker(true)}
-                  style={[styles.input, { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <View style={[styles.categoryIcon, { backgroundColor: CATEGORY_COLORS[category] + "22" }]}>
-                      <Ionicons name={CATEGORY_ICONS[category]} size={16} color={CATEGORY_COLORS[category]} />
-                    </View>
-                    <Text style={{ color: BRAND_DARK, fontWeight: "800" }}>{category}</Text>
-                  </View>
-                  <Ionicons name="chevron-down" size={18} color={MUTED} />
-                </TouchableOpacity>
-              </View>
-
               <LabeledInput
                 label="Target Amount (MYR) *"
                 value={targetAmount}
@@ -348,12 +290,23 @@ function GoalEditor({
                 <Text style={styles.inputLabel}>Deadline (Optional)</Text>
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
-                  style={[styles.input, { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}
+                  activeOpacity={0.7}
+                  style={styles.datePickerButton}
                 >
-                  <Text style={{ color: deadline ? BRAND_DARK : MUTED, fontWeight: "800" }}>
-                    {deadline ? formatDate(deadline) : "Select date"}
+                  <Ionicons name="calendar-outline" size={18} color={BRAND_DARK} />
+                  <Text style={[
+                    styles.datePickerText,
+                    !deadline && styles.datePickerPlaceholder
+                  ]}>
+                    {deadline 
+                      ? deadline.toLocaleDateString("en-MY", { 
+                          day: "2-digit", 
+                          month: "short", 
+                          year: "numeric" 
+                        })
+                      : "Select date"}
                   </Text>
-                  <Ionicons name="calendar-outline" size={18} color={MUTED} />
+                  <Ionicons name="chevron-forward" size={18} color={MUTED} />
                 </TouchableOpacity>
                 {deadline && (
                   <TouchableOpacity
@@ -385,51 +338,21 @@ function GoalEditor({
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        <DateTimePickerModal
+          isVisible={showDatePicker}
+          mode="date"
+          date={deadline || new Date()}
+          onConfirm={(date) => {
+            setDeadline(date);
+            setShowDatePicker(false);
+          }}
+          onCancel={() => setShowDatePicker(false)}
+          minimumDate={new Date()}
+        />
       </Modal>
 
-      <DateTimePickerModal
-        isVisible={showDatePicker}
-        mode="date"
-        date={deadline || new Date()}
-        onConfirm={(date) => {
-          setDeadline(date);
-          setShowDatePicker(false);
-        }}
-        onCancel={() => setShowDatePicker(false)}
-      />
 
-      <Modal visible={showCategoryPicker} transparent animationType="slide" onRequestClose={() => setShowCategoryPicker(false)}>
-        <View style={styles.modalWrap}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Category</Text>
-              <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
-                <Ionicons name="close" size={22} color={BRAND_DARK} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView>
-              {CATEGORY_OPTIONS.map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => {
-                    setCategory(cat);
-                    setShowCategoryPicker(false);
-                  }}
-                  style={[styles.categoryOption, category === cat && styles.categoryOptionActive]}
-                >
-                  <View style={[styles.categoryIcon, { backgroundColor: CATEGORY_COLORS[cat] + "22" }]}>
-                    <Ionicons name={CATEGORY_ICONS[cat]} size={18} color={CATEGORY_COLORS[cat]} />
-                  </View>
-                  <Text style={[styles.categoryOptionText, category === cat && styles.categoryOptionTextActive]}>
-                    {cat}
-                  </Text>
-                  {category === cat && <Ionicons name="checkmark-circle" size={20} color={BRAND_GREEN} />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </>
   );
 }
@@ -517,10 +440,18 @@ function ContributionModal({
               <Text style={styles.inputLabel}>Date *</Text>
               <TouchableOpacity
                 onPress={() => setShowDatePicker(true)}
-                style={[styles.input, { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}
+                activeOpacity={0.7}
+                style={styles.datePickerButton}
               >
-                <Text style={{ color: BRAND_DARK, fontWeight: "800" }}>{formatDate(date)}</Text>
-                <Ionicons name="calendar-outline" size={18} color={MUTED} />
+                <Ionicons name="calendar-outline" size={18} color={BRAND_DARK} />
+                <Text style={styles.datePickerText}>
+                  {date.toLocaleDateString("en-MY", { 
+                    day: "2-digit", 
+                    month: "short", 
+                    year: "numeric" 
+                  })}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={MUTED} />
               </TouchableOpacity>
             </View>
 
@@ -539,18 +470,19 @@ function ContributionModal({
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
 
-      <DateTimePickerModal
-        isVisible={showDatePicker}
-        mode="date"
-        date={date}
-        onConfirm={(selectedDate) => {
-          setDate(selectedDate);
-          setShowDatePicker(false);
-        }}
-        onCancel={() => setShowDatePicker(false)}
-      />
+        <DateTimePickerModal
+          isVisible={showDatePicker}
+          mode="date"
+          date={date}
+          onConfirm={(selectedDate) => {
+            setDate(selectedDate);
+            setShowDatePicker(false);
+          }}
+          onCancel={() => setShowDatePicker(false)}
+          maximumDate={new Date()}
+        />
+      </Modal>
     </>
   );
 }
@@ -604,6 +536,12 @@ export default function Savings() {
     const unsub = subscribeUserSavingsGoals(userId, (rows) => {
       setGoals(rows);
       setLoading(false);
+      // Sync reminders for all goals (idempotent, so safe to call multiple times)
+      rows.forEach((goal) => {
+        syncSavingsReminderForGoal(goal).catch((e) => {
+          console.error("Error syncing savings reminder for goal:", goal.id, e);
+        });
+      });
     });
 
     return () => unsub?.();
@@ -639,6 +577,8 @@ export default function Savings() {
     if (!userId) return Alert.alert("Not signed in", "Please sign in first.");
     try {
       await upsertSavingsGoal(userId, goal);
+      // Sync reminder notification for this goal
+      await syncSavingsReminderForGoal(goal);
     } catch (e: any) {
       console.error(e);
       Alert.alert("Save failed", e?.message ?? "Could not save goal.");
@@ -655,6 +595,8 @@ export default function Savings() {
           if (!userId) return;
           try {
             await deleteSavingsGoalDeep(userId, id);
+            // Cancel reminder notification for this goal
+            await cancelSavingsReminder(id);
           } catch (e: any) {
             console.error(e);
             Alert.alert("Delete failed", e?.message ?? "Could not delete goal.");
@@ -793,6 +735,7 @@ export default function Savings() {
         onClose={() => setContributionModalOpen(false)}
         onSave={saveContribution}
       />
+
     </SafeAreaView>
   );
 }
@@ -921,12 +864,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     color: BRAND_DARK,
   },
-  goalCategory: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: MUTED,
-    marginTop: 2,
-  },
   goalActions: {
     flexDirection: "row",
     gap: 6,
@@ -1039,6 +976,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "flex-end",
+    zIndex: 1000,
   },
   modalCard: {
     backgroundColor: "#fff",
@@ -1078,37 +1016,6 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: "top",
   },
-
-  categoryIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  categoryOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    marginBottom: 8,
-    backgroundColor: "#F7FAF9",
-  },
-  categoryOptionActive: {
-    backgroundColor: BRAND_DARK + "11",
-  },
-  categoryOptionText: {
-    flex: 1,
-    color: BRAND_DARK,
-    fontWeight: "800",
-    fontSize: 14,
-  },
-  categoryOptionTextActive: {
-    color: BRAND_DARK,
-  },
-
   contributionModalGoal: {
     backgroundColor: "#F7FAF9",
     borderRadius: 12,
@@ -1140,6 +1047,26 @@ const styles = StyleSheet.create({
   modalPrimaryText: {
     color: "#fff",
     fontWeight: "900",
+  },
+  datePickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: LINE_SOFT,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  datePickerText: {
+    flex: 1,
+    color: BRAND_DARK,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  datePickerPlaceholder: {
+    color: MUTED,
   },
 
   loadingContainer: {

@@ -34,7 +34,8 @@ type Message = {
   delivered?: boolean;
 };
 
-const YOUR_COMPUTER_IP = "172.20.10.9";
+// const YOUR_COMPUTER_IP = "172.20.10.9";
+const YOUR_COMPUTER_IP = "192.168.0.97";
 
 const BASE_URL =
   Platform.OS === "android"

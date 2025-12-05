@@ -41,14 +41,14 @@ type Message =
       time?: string;
     };
 
-const YOUR_COMPUTER_IP = "172.20.10.9";
+// const YOUR_COMPUTER_IP = "172.20.10.9";
+const YOUR_COMPUTER_IP = "192.168.0.97";
 
 // For Android emulator, use 10.0.2.2. For real device or iOS, use your computer's IP
 const BASE_URL = Platform.OS === "android"
-  ? `http://${YOUR_COMPUTER_IP}:3000`  // Use actual IP for real Android device
+  ? `http://${YOUR_COMPUTER_IP}:3000` 
   : `http://${YOUR_COMPUTER_IP}:3000`;
 
-// sendMessageToBot will be defined inside the component to access auth.currentUser
 
 interface AvatarScreenProps {
   onClose?: () => void;
@@ -65,15 +65,15 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
   const recordingRef = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
 
-  // ✅ Fetch username from Firestore and send greeting
+  // Fetch username from Firestore and send greeting
   useEffect(() => {
     const fetchUserData = async () => {
       try {
         let name = "there";
-        const profile = await getUsernameFromFirestore(); // profile: UserSummary | null
+        const profile = await getUsernameFromFirestore(); 
 
         if (profile) {
-          name = profile.username; // ✅ string
+          name = profile.username; 
         }
 
         setMessages([{
@@ -89,7 +89,7 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
     fetchUserData();
   }, []);
 
-  // ✅ Load finance snapshot for current user and current month
+  // Load finance snapshot for current user and current month
   useEffect(() => {
     const loadSnapshot = async () => {
       try {
@@ -130,8 +130,6 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
         }
       } catch (err: any) {
         console.error("Failed to load finance snapshot:", err.message);
-        // Don't show error to user, just log it
-        // setFinanceSnapshot(null);
       }
     };
 
@@ -389,7 +387,7 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
       <KeyboardAvoidingView
         style={styles.foreground}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} // tweak for header, status bar, etc.
+        keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0} 
       >
 
         {/* Chat messages */}
@@ -583,7 +581,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   background: {
-    ...StyleSheet.absoluteFillObject, // fills entire screen
+    ...StyleSheet.absoluteFillObject, 
     width: "100%",
     height: "100%",
   },

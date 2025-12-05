@@ -5,8 +5,8 @@ const guildsData: GuildItemData = {
     location: Locations.Melaka,
     price: 750,
   },
-  tabbith: {
-    location: Locations.Tabbith,
+  Kuala_Lumpur: {
+    location: Locations.Kuala_Lumpur,
     price: 1500,
   },
   butre: {

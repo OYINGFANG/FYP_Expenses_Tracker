@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,9 @@ import { subscribeUserExpenseRecords, ExpenseRecord } from "../utils/ExpensesUti
 import { getUserBudget, getCurrentMonthKey, getBudgetProgress, getMonthDateRange } from "../utils/budgetUtils";
 import { subscribeUserIncomeRecords, type IncomeRecord } from "../utils/IncomeUtils";
 import { subscribeUserDebts } from "../utils/DebtUtils";
+import { getNotifications } from "../utils/notificationStore";
+import { useFocusEffect } from "expo-router";
+import { checkAndCreateBudgetNotifications } from "../utils/budgetNotificationUtils";
 
 // =================== OCR helpers ===================
 const OCR_SERVER_URL = `${CHAT_SERVER_URL}/ocr/receipt`;
@@ -156,6 +159,7 @@ export default function Home() {
 
   const [debts, setDebts] = useState<Debt[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   // Load user data
   useEffect(() => {
@@ -240,6 +244,28 @@ useEffect(() => {
   })();
 }, []);
 
+// Load notification count
+const loadNotificationCount = async () => {
+  try {
+    const notifications = await getNotifications();
+    const unreadCount = notifications.filter(n => !n.read).length;
+    setUnreadNotificationCount(unreadCount);
+  } catch (error) {
+    console.error("Error loading notification count:", error);
+  }
+};
+
+// Load notification count on mount and when screen is focused
+useEffect(() => {
+  loadNotificationCount();
+}, []);
+
+useFocusEffect(
+  useCallback(() => {
+    loadNotificationCount();
+  }, [])
+);
+
 // Subscribe to user's debts
 useEffect(() => {
   if (!userId) return;
@@ -296,7 +322,7 @@ const debtHealth = useMemo(() => {
 
       // EXPENSES (current month only)
       unsubExp = await subscribeUserExpenseRecords(
-        (records) => {
+        async (records) => {
           setExpenseRecords(records);
 
           const monthExpense = records
@@ -312,6 +338,14 @@ const debtHealth = useMemo(() => {
               return acc;
             }, {});
           setCategoryBreakdown(breakdown);
+
+          // Check and create budget notifications
+          const stored = await AsyncStorage.getItem("userId");
+          if (stored) {
+            checkAndCreateBudgetNotifications(stored, monthKey).catch(err => {
+              console.error("Error checking budget notifications:", err);
+            });
+          }
         },
         (err) => console.error("Expense sub error:", err)
       );
@@ -753,38 +787,26 @@ const debtHealth = useMemo(() => {
               <Text style={styles.askAuriText}>Ask Auri ✨</Text>
             </TouchableOpacity>
 
+            {/* Notification Bell Icon */}
+            <TouchableOpacity
+              style={styles.notificationBell}
+              onPress={() => router.push("/screen/Notifications" as any)}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="notifications-outline" size={24} color="#1E3932" />
+              {unreadNotificationCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadNotificationCount > 99 ? "99+" : unreadNotificationCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
             {/* Greeting text flows normally */}
             <Text style={styles.greeting}>Hey, {username || "Guest"} 👋</Text>
-            <Text style={styles.subWelcome}>Welcome back to your finances</Text>
-
-            {/* Absolutely-positioned logout (won't affect greeting layout) */}
-            <TouchableOpacity
-              style={styles.logoutFab}
-              onPress={async () => {
-                Alert.alert("Logout", "Are you sure you want to log out?", [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Yes, Logout",
-                    style: "destructive",
-                    onPress: async () => {
-                      try {
-                        const rememberedEmail = await AsyncStorage.getItem("email");
-                        const rememberedPassword = await AsyncStorage.getItem("password");
-                        await AsyncStorage.multiRemove(["loggedIn", "userId", "userEmail", "token"]);
-                        if (rememberedEmail) await AsyncStorage.setItem("email", rememberedEmail);
-                        if (rememberedPassword) await AsyncStorage.setItem("password", rememberedPassword);
-                        router.replace("/screen/SignIn");
-                      } catch (error) {
-                        console.error("Error during logout:", error);
-                      }
-                    },
-                  },
-                ]);
-              }}
-            >
-              <Ionicons name="log-out-outline" size={20} color="#fff" />
-              <Text style={styles.logoutText}>Logout</Text>
-            </TouchableOpacity>
+            <Text style={styles.subWelcome}>Welcome back, manage your finances</Text>
 
             {/* Balance Card */}
             <View style={styles.balanceCard}>
@@ -1036,9 +1058,12 @@ const debtHealth = useMemo(() => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#E4F2ED" },
   scrollContent: { paddingBottom: 100 },
-  headerContainer: { paddingHorizontal: 20, paddingTop: 12 },
+  headerContainer: { paddingHorizontal: 20, paddingTop: 12, position: "relative", zIndex: 1 },
   askAuriButton: { alignSelf: "center", backgroundColor: "#C9EAD6", paddingVertical: 6, paddingHorizontal: 20, borderRadius: 20 },
   askAuriText: { fontWeight: "600", color: "#1E3932" },
+  notificationBell: { position: "absolute", top: 60, right: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, zIndex: 1000 },
+  notificationBadge: { position: "absolute", top: -4, right: -4, backgroundColor: "#EF4444", borderRadius: 10, minWidth: 20, height: 20, alignItems: "center", justifyContent: "center", paddingHorizontal: 6, borderWidth: 2, borderColor: "#fff" },
+  notificationBadgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   subWelcome: { color: "#1E3932", opacity: 0.7, fontSize: 14, marginBottom: 12 },
   logoutButton: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", backgroundColor: "#1E3932", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, marginTop: 8 },
   logoutText: { color: "#fff", fontSize: 13, fontWeight: "600", marginLeft: 5 },

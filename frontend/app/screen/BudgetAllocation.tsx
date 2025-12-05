@@ -26,6 +26,8 @@ import {
   type BudgetAllocation,
   type BudgetRecord,
 } from "../utils/budgetUtils";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { checkAndCreateBudgetNotifications } from "../utils/budgetNotificationUtils";
 
 /* ---------------------------
    Local helpers (month nav)
@@ -43,7 +45,6 @@ const formatMonthKey = (monthKey: string) => {
   return d.toLocaleString("en-US", { month: "short", year: "numeric" });
 };
 const cmpMonthKey = (a: string, b: string) => {
-  // returns -1 if a<b, 0 if equal, 1 if a>b
   if (a === b) return 0;
   const [ay, am] = a.split("-").map(Number);
   const [by, bm] = b.split("-").map(Number);
@@ -282,6 +283,15 @@ export default function BudgetAllocationScreen() {
         setEditMode({});
         setPercentages({ ...record.percentages });
         setAllocations({ ...record.allocations });
+        
+        // Check and create budget notifications after saving
+        const userId = await AsyncStorage.getItem("userId");
+        if (userId) {
+          checkAndCreateBudgetNotifications(userId, monthKey).catch(err => {
+            console.error("Error checking budget notifications:", err);
+          });
+        }
+        
         Alert.alert("Success", "Budget allocation saved successfully!", [{ text: "OK" }]);
       } else {
         Alert.alert("Error", "Failed to save budget allocation. You might already have a budget for this month.");
@@ -371,7 +381,7 @@ export default function BudgetAllocationScreen() {
           <TouchableOpacity
             style={[styles.modeBtn, mode === "plan" && styles.modeBtnActive]}
             onPress={() => setMode("plan")}
-            disabled={cmpMonthKey(monthKey, todayKey) < 0} // past months are track-only
+            disabled={cmpMonthKey(monthKey, todayKey) < 0} 
           >
             <Text style={[styles.modeBtnText, mode === "plan" && styles.modeBtnTextActive]}>
               Plan

@@ -38,7 +38,6 @@ export default function AddRecord() {
   const paramsKey = `${amountParam || ""}|${dateParam || ""}|${noteParam || ""}|${categoryParam || ""}|${merchantParam || ""}|${paymentMethodParam || ""}`;
 
   useEffect(() => {
-    // Only update if params have actually changed
     if (prevParamsRef.current === paramsKey) return;
     prevParamsRef.current = paramsKey;
 
@@ -150,9 +149,9 @@ export default function AddRecord() {
           type: "Expenses",
           category: selectedCategory,
           amount: inputValue,
-          paymentMethod,                 // e.g. "Cash"
+          paymentMethod,                 
           date: selectedDate.toISOString(),
-          note,                          // optional
+          note,                          
         },
       });
 
@@ -245,7 +244,6 @@ export default function AddRecord() {
         </TouchableOpacity>
 
         <View style={styles.toggleWrapper}>
-          {/* <Text style={styles.headerTitle}>Add {selected}</Text> */}
           <View style={styles.toggleContainer}>
             <Animated.View
               style={[styles.slidingIndicator, { transform: [{ translateX: slideInterpolate }] }]}

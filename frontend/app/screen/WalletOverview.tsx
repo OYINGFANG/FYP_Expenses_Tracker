@@ -139,12 +139,15 @@ const getPeriodRange = (period: Period, anchorISO: string) => {
   if (Number.isNaN(d.getTime())) return { startISO: "", endISO: "" };
 
   if (period === "Week") {
+    // Get the start of the current week (Sunday)
     const day = d.getDay();
     const start = new Date(d);
     start.setDate(d.getDate() - day);
     start.setHours(0, 0, 0, 0);
+    // End is 7 days later (next Sunday), but we want to include up to end of Saturday
     const end = new Date(start);
     end.setDate(start.getDate() + 7);
+    end.setHours(23, 59, 59, 999);
     return { startISO: start.toISOString(), endISO: end.toISOString() };
   }
 
@@ -396,11 +399,15 @@ export default function Stats() {
   }, [refreshSnapshot]);
 
   // Time windows
-  const anchorISO = monthKeyToMidISO(monthKey);
+  // For Week period, use current date; for others, use month midpoint
+  const anchorISO = period === "Week" ? new Date().toISOString() : monthKeyToMidISO(monthKey);
   const { startISO, endISO } = useMemo(() => getPeriodRange(period, anchorISO), [period, anchorISO]);
 
   const prevMonthKey = useMemo(() => addMonths(monthKey, -1), [monthKey]);
-  const prevAnchorISO = monthKeyToMidISO(prevMonthKey);
+  // For Week period, use previous week; for others, use previous month midpoint
+  const prevAnchorISO = period === "Week" 
+    ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() 
+    : monthKeyToMidISO(prevMonthKey);
   const { startISO: prevStartISO, endISO: prevEndISO } = useMemo(
     () => getPeriodRange(period, prevAnchorISO),
     [period, prevAnchorISO]

@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 import {
   subscribeUserIncomeRecords,
@@ -31,7 +32,14 @@ import {
   upsertDebt,
   addDebtPayment,
   deleteDebtDeep,
+  type Debt,
+  type DebtType,
+  type Payment,
 } from "../utils/DebtUtils";
+import {
+  syncDebtReminderForDebt,
+  cancelDebtReminder,
+} from "../utils/debtNotificationUtils";
 
 // If you use Firebase Auth, import your initialized auth
 import { auth } from "../../firebase";
@@ -47,33 +55,6 @@ const RED = "#EF4444";
 const ORANGE = "#F59E0B";
 const BLUE = "#3B82F6";
 
-type DebtType =
-  | "Credit Card"
-  | "Personal Loan"
-  | "Mortgage"
-  | "Car Loan"
-  | "Student Loan"
-  | "Medical"
-  | "Other";
-
-type Payment = {
-  id: string;
-  amount: number;
-  dateISO: string;
-  note?: string;
-};
-
-type Debt = {
-  id: string;
-  name: string;
-  type: DebtType;
-  originalAmount: number;  // initial debt amount
-  currentBalance: number;   // remaining balance
-  monthlyPayment: number;   // target monthly payment
-  targetDate?: string;      // target payoff date (ISO)
-  payments: Payment[];      // payment history
-  createdAt: string;        // ISO date
-};
 
 const TYPE_ICON: Record<DebtType, keyof typeof Ionicons.glyphMap> = {
   "Credit Card": "card",
@@ -110,6 +91,41 @@ const monthStartEndISO = (yyyymm: string) => {
   const start = new Date(y, (m || 1) - 1, 1).toISOString();
   const end = new Date(y, (m || 1), 1).toISOString();
   return { startISO: start, endISO: end };
+};
+
+/**
+ * Check if a payment date is in the current month
+ */
+const isPaymentInCurrentMonth = (paymentDateISO: string, currentMonthKey: string): boolean => {
+  const paymentDate = new Date(paymentDateISO);
+  const [year, month] = currentMonthKey.split("-").map(Number);
+  const paymentYear = paymentDate.getFullYear();
+  const paymentMonth = paymentDate.getMonth() + 1; // getMonth() returns 0-11
+  
+  return paymentYear === year && paymentMonth === month;
+};
+
+/**
+ * Check if debt has been paid in the current month
+ */
+const hasPaidThisMonth = (debt: Debt, currentMonthKey: string): { paid: boolean; paymentDate?: string; amount?: number } => {
+  if (!debt.payments || debt.payments.length === 0) {
+    return { paid: false };
+  }
+  
+  const currentMonthPayment = debt.payments.find(p => 
+    isPaymentInCurrentMonth(p.dateISO, currentMonthKey)
+  );
+  
+  if (currentMonthPayment) {
+    return {
+      paid: true,
+      paymentDate: currentMonthPayment.dateISO,
+      amount: currentMonthPayment.amount,
+    };
+  }
+  
+  return { paid: false };
 };
 
 const formatDate = (iso: string) => {
@@ -164,15 +180,18 @@ function DebtRow({
   onEdit,
   onDelete,
   onAddPayment,
+  currentMonthKey,
 }: {
   d: Debt;
   onEdit: () => void;
   onDelete: () => void;
   onAddPayment: () => void;
+  currentMonthKey: string;
 }) {
   const color = TYPE_COLORS[d.type];
   const progress = d.originalAmount > 0 ? ((d.originalAmount - d.currentBalance) / d.originalAmount) * 100 : 0;
   const monthsLeft = getMonthsRemaining(d.currentBalance, d.monthlyPayment);
+  const paymentStatus = hasPaidThisMonth(d, currentMonthKey);
   
   return (
     <View style={styles.debtCard}>
@@ -216,6 +235,48 @@ function DebtRow({
         </View>
       </View>
 
+      {/* Current Month Payment Status */}
+      {d.monthlyPayment > 0 && (
+        <View style={[
+          styles.paymentStatusSection,
+          paymentStatus.paid ? styles.paymentStatusPaid : styles.paymentStatusUnpaid
+        ]}>
+          {paymentStatus.paid ? (
+            <>
+              <Ionicons name="checkmark-circle" size={18} color={BRAND_GREEN} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.paymentStatusTitle}>Paid this month ✓</Text>
+                {paymentStatus.amount && (
+                  <Text style={styles.paymentStatusSubtext}>
+                    {fmtRM(paymentStatus.amount)} on {paymentStatus.paymentDate ? formatDate(paymentStatus.paymentDate) : ""}
+                  </Text>
+                )}
+              </View>
+            </>
+          ) : (
+            <>
+              <Ionicons name="alert-circle" size={18} color={ORANGE} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.paymentStatusTitle}>Not paid this month</Text>
+                <Text style={styles.paymentStatusSubtext}>
+                  Monthly payment: {fmtRM(d.monthlyPayment)}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+      )}
+
+      {/* Start Date */}
+      {d.startDate && (
+        <View style={styles.timelineSection}>
+          <Ionicons name="calendar-outline" size={16} color={MUTED} />
+          <Text style={styles.timelineText}>
+            Started: {formatDate(d.startDate)}
+          </Text>
+        </View>
+      )}
+
       {/* Timeline */}
       <View style={styles.timelineSection}>
         {monthsLeft ? (
@@ -255,6 +316,36 @@ function DebtRow({
         <Ionicons name="add-circle" size={18} color={BRAND_DARK} />
         <Text style={styles.addPaymentText}>Record Payment</Text>
       </TouchableOpacity>
+
+      {/* TEST: Notification Button (remove in production) */}
+      {/* <TouchableOpacity
+        onPress={async () => {
+          try {
+            const notificationId = await scheduleTestDebtReminder(d);
+            if (notificationId) {
+              Alert.alert(
+                "Test Notification Scheduled",
+                "A test notification will appear in 5 seconds. Make sure notifications are enabled for this app.",
+                [{ text: "OK" }]
+              );
+            } else {
+              Alert.alert(
+                "Failed",
+                "Could not schedule test notification. Check if notifications are enabled."
+              );
+            }
+          } catch (error) {
+            console.error("Test notification error:", error);
+            Alert.alert("Error", "Failed to schedule test notification.");
+          }
+        }}
+        style={[styles.addPaymentBtn, { backgroundColor: ORANGE, marginTop: 8 }]}
+      >
+        <Ionicons name="notifications" size={18} color="#fff" />
+        <Text style={[styles.addPaymentText, { color: "#fff" }]}>
+          🧪 Test Notification (5s)
+        </Text>
+      </TouchableOpacity> */}
     </View>
   );
 }
@@ -276,6 +367,10 @@ function DebtEditor({
   const [originalAmount, setOriginalAmount] = useState(String(initial?.originalAmount ?? ""));
   const [currentBalance, setCurrentBalance] = useState(String(initial?.currentBalance ?? ""));
   const [monthlyPayment, setMonthlyPayment] = useState(String(initial?.monthlyPayment ?? ""));
+  const [startDate, setStartDate] = useState<Date | null>(
+    initial?.startDate ? new Date(initial.startDate) : null
+  );
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -284,6 +379,10 @@ function DebtEditor({
     setOriginalAmount(String(initial?.originalAmount ?? ""));
     setCurrentBalance(String(initial?.currentBalance ?? ""));
     setMonthlyPayment(String(initial?.monthlyPayment ?? ""));
+    setStartDate(
+      initial?.startDate ? new Date(initial.startDate) : null
+    );
+    setShowDatePicker(false);
   }, [open, initial]);
 
   const save = () => {
@@ -299,6 +398,11 @@ function DebtEditor({
       Alert.alert("Invalid balance", "Current balance cannot exceed original amount.");
       return;
     }
+    // Require start date for new debts
+    if (!initial && !startDate) {
+      Alert.alert("Missing info", "Please enter when this debt was taken.");
+      return;
+    }
 
     const d: Debt = {
       id: initial?.id || String(Date.now()), // temp id; Firestore can also auto-id
@@ -307,6 +411,7 @@ function DebtEditor({
       originalAmount: orig,
       currentBalance: curr,
       monthlyPayment: monthly,
+      startDate: startDate ? startDate.toISOString() : initial?.startDate,
       payments: initial?.payments || [],
       createdAt: initial?.createdAt || new Date().toISOString(),
     };
@@ -366,6 +471,32 @@ function DebtEditor({
               placeholder="e.g., 500" 
             />
 
+            {/* Date Picker for Start Date */}
+            <View style={{ marginTop: 12 }}>
+              <Text style={styles.inputLabel}>
+                {initial ? "Debt Start Date (Optional)" : "Debt Start Date *"}
+              </Text>
+              <TouchableOpacity 
+                onPress={() => setShowDatePicker(true)}
+                style={styles.datePickerButton}
+              >
+                <Ionicons name="calendar-outline" size={18} color={BRAND_DARK} />
+                <Text style={[
+                  styles.datePickerText,
+                  !startDate && styles.datePickerPlaceholder
+                ]}>
+                  {startDate 
+                    ? startDate.toLocaleDateString("en-MY", { 
+                        day: "2-digit", 
+                        month: "short", 
+                        year: "numeric" 
+                      })
+                    : "Select date"}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={MUTED} />
+              </TouchableOpacity>
+            </View>
+
             {parseNum(monthlyPayment) > 0 && parseNum(currentBalance) > 0 && (
               <View style={styles.estimateBox}>
                 <Ionicons name="information-circle" size={16} color={BLUE} />
@@ -382,6 +513,18 @@ function DebtEditor({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <DateTimePickerModal
+        isVisible={showDatePicker}
+        mode="date"
+        date={startDate || new Date()}
+        onConfirm={(date) => {
+          setStartDate(date);
+          setShowDatePicker(false);
+        }}
+        onCancel={() => setShowDatePicker(false)}
+        maximumDate={new Date()}
+      />
     </Modal>
   );
 }
@@ -399,14 +542,16 @@ function PaymentModal({
   onSave: (debtId: string, payment: Payment) => void;
 }) {
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState<Date>(new Date());
   const [note, setNote] = useState("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
     if (open && debt) {
       setAmount(String(debt.monthlyPayment || ""));
-      setDate(new Date().toISOString().split("T")[0]);
+      setDate(new Date());
       setNote("");
+      setShowDatePicker(false);
     }
   }, [open, debt]);
 
@@ -418,10 +563,45 @@ function PaymentModal({
       return;
     }
 
+    // Check if payment is in current month and if debt already has a payment this month
+    const currentMonthKey = getCurrentMonthKey();
+    const paymentDate = new Date(date);
+    const isCurrentMonth = isPaymentInCurrentMonth(paymentDate.toISOString(), currentMonthKey);
+    
+    if (isCurrentMonth && debt.payments && debt.payments.length > 0) {
+      const hasCurrentMonthPayment = debt.payments.some(p => 
+        isPaymentInCurrentMonth(p.dateISO, currentMonthKey)
+      );
+      
+      if (hasCurrentMonthPayment) {
+        Alert.alert(
+          "Duplicate Payment",
+          "This debt already has a payment recorded for this month. Are you sure you want to add another payment?",
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "Yes, Add Anyway",
+              onPress: () => {
+                const payment: Payment = {
+                  id: String(Date.now()),
+                  amount: amt,
+                  dateISO: paymentDate.toISOString(),
+                  note: note.trim() || undefined,
+                };
+                onSave(debt.id, payment);
+                onClose();
+              },
+            },
+          ]
+        );
+        return;
+      }
+    }
+
     const payment: Payment = {
       id: String(Date.now()),
       amount: amt,
-      dateISO: new Date(date).toISOString(),
+      dateISO: paymentDate.toISOString(),
       note: note.trim() || undefined,
     };
 
@@ -442,32 +622,46 @@ function PaymentModal({
             </TouchableOpacity>
           </View>
 
-          <View style={styles.paymentModalDebt}>
-            <Text style={styles.paymentModalDebtName}>{debt.name || debt.type}</Text>
-            <Text style={styles.paymentModalBalance}>Balance: {fmtRM(debt.currentBalance)}</Text>
-          </View>
+          <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+            <View style={styles.paymentModalDebt}>
+              <Text style={styles.paymentModalDebtName}>{debt.name || debt.type}</Text>
+              <Text style={styles.paymentModalBalance}>Balance: {fmtRM(debt.currentBalance)}</Text>
+            </View>
 
-          <LabeledInput 
-            label="Payment Amount" 
-            value={amount} 
-            onChangeText={setAmount} 
-            keyboardType="numeric" 
-            placeholder="e.g., 500" 
-          />
+            <LabeledInput 
+              label="Payment Amount" 
+              value={amount} 
+              onChangeText={setAmount} 
+              keyboardType="numeric" 
+              placeholder="e.g., 500" 
+            />
 
-          <LabeledInput 
-            label="Payment Date" 
-            value={date} 
-            onChangeText={setDate} 
-            placeholder="YYYY-MM-DD" 
-          />
+            {/* Date Picker for Payment Date */}
+            <View style={{ marginTop: 12 }}>
+              <Text style={styles.inputLabel}>Payment Date *</Text>
+              <TouchableOpacity 
+                onPress={() => setShowDatePicker(true)}
+                style={styles.datePickerButton}
+              >
+                <Ionicons name="calendar-outline" size={18} color={BRAND_DARK} />
+                <Text style={styles.datePickerText}>
+                  {date.toLocaleDateString("en-MY", { 
+                    day: "2-digit", 
+                    month: "short", 
+                    year: "numeric" 
+                  })}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={MUTED} />
+              </TouchableOpacity>
+            </View>
 
-          <LabeledInput 
-            label="Note (Optional)" 
-            value={note} 
-            onChangeText={setNote} 
-            placeholder="e.g., Monthly payment" 
-          />
+            <LabeledInput 
+              label="Note (Optional)" 
+              value={note} 
+              onChangeText={setNote} 
+              placeholder="e.g., Monthly payment" 
+            />
+          </ScrollView>
 
           <TouchableOpacity onPress={save} style={styles.modalPrimary}>
             <Ionicons name="checkmark-circle" size={18} color="#fff" />
@@ -475,6 +669,18 @@ function PaymentModal({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <DateTimePickerModal
+        isVisible={showDatePicker}
+        mode="date"
+        date={date}
+        onConfirm={(selectedDate) => {
+          setDate(selectedDate);
+          setShowDatePicker(false);
+        }}
+        onCancel={() => setShowDatePicker(false)}
+        maximumDate={new Date()}
+      />
     </Modal>
   );
 }
@@ -511,6 +717,11 @@ export default function Debt() {
   const [userId, setUserId] = useState<string | null>(null);
 
   const [showBreakdown, setShowBreakdown] = useState(false);
+
+  // Filter states
+  const [filterType, setFilterType] = useState<DebtType | "All">("All");
+  const [filterPaymentStatus, setFilterPaymentStatus] = useState<"All" | "Paid" | "Unpaid">("All");
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   // resolve user id and subscribe to debts
   useEffect(() => {
@@ -608,6 +819,30 @@ export default function Debt() {
     };
   }, [debts, monthlyIncome]);
 
+  /* ----- Filtered Debts ----- */
+  const filteredDebts = useMemo(() => {
+    let filtered = [...debts];
+
+    // Filter by type
+    if (filterType !== "All") {
+      filtered = filtered.filter(d => d.type === filterType);
+    }
+
+    // Filter by payment status
+    if (filterPaymentStatus !== "All") {
+      filtered = filtered.filter(d => {
+        const status = hasPaidThisMonth(d, monthKey);
+        if (filterPaymentStatus === "Paid") {
+          return status.paid && d.monthlyPayment > 0;
+        } else {
+          return !status.paid && d.monthlyPayment > 0;
+        }
+      });
+    }
+
+    return filtered;
+  }, [debts, filterType, filterPaymentStatus, monthKey]);
+
   /* ----- Actions (Firestore) ----- */
   const openAdd = () => { setEditing(null); setEditorOpen(true); };
   const openEdit = (d: Debt) => { setEditing(d); setEditorOpen(true); };
@@ -616,6 +851,8 @@ export default function Debt() {
     if (!userId) return Alert.alert("Not signed in", "Please sign in first.");
     try {
       await upsertDebt(userId, d);
+      // Sync debt reminder after successful save
+      await syncDebtReminderForDebt(d);
     } catch (e: any) {
       console.error(e);
       Alert.alert("Save failed", e?.message ?? "Could not save debt.");
@@ -631,6 +868,8 @@ export default function Debt() {
         onPress: async () => {
           try {
             await deleteDebtDeep(id);
+            // Cancel debt reminder after successful delete
+            await cancelDebtReminder(id);
           } catch (e: any) {
             console.error(e);
             Alert.alert("Delete failed", e?.message ?? "Could not delete debt.");
@@ -775,7 +1014,10 @@ export default function Debt() {
               onPress={() => setShowBreakdown((prev) => !prev)}
               activeOpacity={0.7}
             >
-              <Text style={styles.subscoresTitle}>Score Breakdown</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="information-circle" size={18} color={BLUE} />
+                <Text style={styles.subscoresTitle}>Score Breakdown</Text>
+              </View>
 
               {/* "arrow down score breakdown" label + icon */}
               <View style={styles.subscoresToggle}>
@@ -792,17 +1034,87 @@ export default function Debt() {
 
             {showBreakdown && (
               <>
-                <Subscore label="Debt-to-Income (40%)" value={totals.subscores.sDTI} />
-                <Subscore label="Repayment Progress (30%)" value={totals.subscores.sProgress} />
-                <Subscore label="Payment Consistency (20%)" value={totals.subscores.sConsistency} />
-                <Subscore label="Number of Debts (10%)" value={totals.subscores.sCount} />
+                <View style={styles.breakdownInfo}>
+                  <Ionicons name="calculator-outline" size={16} color={BLUE} />
+                  <Text style={styles.breakdownInfoText}>
+                    Your score is calculated from 4 factors weighted by importance
+                  </Text>
+                </View>
+                
+                <View style={styles.factorsGrid}>
+                  <Subscore 
+                    icon="trending-down"
+                    label="Debt-to-Income" 
+                    weight={40}
+                    value={totals.subscores.sDTI}
+                    description="Monthly debt payments vs income"
+                    contribution={Math.round(0.40 * totals.subscores.sDTI)}
+                  />
+                  <Subscore 
+                    icon="checkmark-circle"
+                    label="Repayment Progress" 
+                    weight={30}
+                    value={totals.subscores.sProgress}
+                    description="How much debt you've paid off"
+                    contribution={Math.round(0.30 * totals.subscores.sProgress)}
+                  />
+                  <Subscore 
+                    icon="calendar"
+                    label="Payment Consistency" 
+                    weight={20}
+                    value={totals.subscores.sConsistency}
+                    description="Regular payments (last 3 months)"
+                    contribution={Math.round(0.20 * totals.subscores.sConsistency)}
+                  />
+                  <Subscore 
+                    icon="list"
+                    label="Number of Debts" 
+                    weight={10}
+                    value={totals.subscores.sCount}
+                    description="Total active debts"
+                    contribution={Math.round(0.10 * totals.subscores.sCount)}
+                  />
+                </View>
+
+                <View style={styles.calculationBox}>
+                  <View style={styles.calculationHeader}>
+                    <Ionicons name="calculator" size={18} color={BRAND_DARK} />
+                    <Text style={styles.calculationTitle}>Score Calculation</Text>
+                  </View>
+                  {/* <View style={styles.calculationSteps}>
+                    <View style={styles.calculationStep}>
+                      <Text style={styles.calculationStepLabel}>40% × {Math.round(totals.subscores.sDTI)}</Text>
+                      <Text style={styles.calculationStepValue}>+{Math.round(0.40 * totals.subscores.sDTI)}</Text>
+                    </View>
+                    <View style={styles.calculationStep}>
+                      <Text style={styles.calculationStepLabel}>30% × {Math.round(totals.subscores.sProgress)}</Text>
+                      <Text style={styles.calculationStepValue}>+{Math.round(0.30 * totals.subscores.sProgress)}</Text>
+                    </View>
+                    <View style={styles.calculationStep}>
+                      <Text style={styles.calculationStepLabel}>20% × {Math.round(totals.subscores.sConsistency)}</Text>
+                      <Text style={styles.calculationStepValue}>+{Math.round(0.20 * totals.subscores.sConsistency)}</Text>
+                    </View>
+                    <View style={styles.calculationStep}>
+                      <Text style={styles.calculationStepLabel}>10% × {Math.round(totals.subscores.sCount)}</Text>
+                      <Text style={styles.calculationStepValue}>+{Math.round(0.10 * totals.subscores.sCount)}</Text>
+                    </View>
+                  </View> */}
+                  {/* <View style={styles.calculationDivider} /> */}
+                  <View style={styles.calculationTotal}>
+                    <Text style={styles.calculationTotalLabel}>Total Score</Text>
+                    <Text style={[styles.calculationTotalValue, {
+                      color: totals.healthScore >= 80 ? BRAND_GREEN : 
+                             totals.healthScore >= 60 ? ORANGE : RED
+                    }]}>{totals.healthScore}</Text>
+                  </View>
+                </View>
               </>
             )}
           </View>
         </View>
 
         {/* Priority Focus */}
-        {totals.priorityDebt && (
+        {/* {totals.priorityDebt && (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Ionicons name="flag" size={18} color={RED} />
@@ -814,7 +1126,7 @@ export default function Debt() {
               <Text style={styles.priorityHint}>Highest balance • Focus here first</Text>
             </View>
           </View>
-        )}
+        )} */}
 
         {/* Suggestions */}
         {suggestions.length > 0 && (
@@ -835,8 +1147,49 @@ export default function Debt() {
         {/* Debts List */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Debts ({debts.length})</Text>
+            <Text style={styles.sectionTitle}>Your Debts ({filteredDebts.length})</Text>
+            <TouchableOpacity
+              onPress={() => setShowFilterModal(true)}
+              style={styles.filterButton}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="filter" size={18} color={BRAND_DARK} />
+              <Text style={styles.filterButtonText}>Filter</Text>
+            </TouchableOpacity>
           </View>
+
+          {/* Active Filters Display */}
+          {(filterType !== "All" || filterPaymentStatus !== "All") && (
+            <View style={styles.activeFiltersContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+                {filterType !== "All" && (
+                  <View style={styles.activeFilterChip}>
+                    <Text style={styles.activeFilterText}>Type: {filterType}</Text>
+                    <TouchableOpacity onPress={() => setFilterType("All")}>
+                      <Ionicons name="close-circle" size={16} color={MUTED} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {filterPaymentStatus !== "All" && (
+                  <View style={styles.activeFilterChip}>
+                    <Text style={styles.activeFilterText}>Status: {filterPaymentStatus}</Text>
+                    <TouchableOpacity onPress={() => setFilterPaymentStatus("All")}>
+                      <Ionicons name="close-circle" size={16} color={MUTED} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <TouchableOpacity
+                  onPress={() => {
+                    setFilterType("All");
+                    setFilterPaymentStatus("All");
+                  }}
+                  style={styles.clearAllButton}
+                >
+                  <Text style={styles.clearAllText}>Clear All</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          )}
 
           {debts.length === 0 ? (
             <View style={styles.card}>
@@ -846,14 +1199,23 @@ export default function Debt() {
                 <Text style={styles.emptyText}>Tap the + button to add a debt you want to track</Text>
               </View>
             </View>
+          ) : filteredDebts.length === 0 ? (
+            <View style={styles.card}>
+              <View style={styles.empty}>
+                <Ionicons name="search-outline" size={56} color={MUTED} />
+                <Text style={styles.emptyTitle}>No debts match your filters</Text>
+                <Text style={styles.emptyText}>Try adjusting your filter options</Text>
+              </View>
+            </View>
           ) : (
-            debts.map((d) => (
+            filteredDebts.map((d) => (
               <DebtRow
                 key={d.id}
                 d={d}
                 onEdit={() => openEdit(d)}
                 onDelete={() => deleteDebt(d.id)}
                 onAddPayment={() => openPaymentModal(d)}
+                currentMonthKey={monthKey}
               />
             ))
           )}
@@ -873,6 +1235,78 @@ export default function Debt() {
         onClose={() => setPaymentModalOpen(false)}
         onSave={savePayment}
       />
+
+      {/* Filter & Sort Modal */}
+      <Modal visible={showFilterModal} transparent animationType="slide" onRequestClose={() => setShowFilterModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalWrap}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Filter</Text>
+              <TouchableOpacity onPress={() => setShowFilterModal(false)}>
+                <Ionicons name="close" size={22} color={BRAND_DARK} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+              {/* Filter by Type */}
+              <View style={{ marginTop: 12 }}>
+                <Text style={styles.inputLabel}>Filter by Type</Text>
+                <View style={styles.typeGrid}>
+                  {(["All", "Credit Card", "Personal Loan", "Mortgage", "Car Loan", "Student Loan", "Medical", "Other"] as (DebtType | "All")[]).map((t) => {
+                    const active = filterType === t;
+                    return (
+                      <TouchableOpacity
+                        key={t}
+                        onPress={() => setFilterType(t)}
+                        style={[styles.typeChip, active && styles.typeChipActive]}
+                      >
+                        {t !== "All" && (
+                          <Ionicons
+                            name={TYPE_ICON[t as DebtType]}
+                            size={14}
+                            color={active ? "#fff" : BRAND_DARK}
+                          />
+                        )}
+                        <Text style={[styles.typeChipText, active && { color: "#fff" }]}>{t}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Filter by Payment Status */}
+              <View style={{ marginTop: 20 }}>
+                <Text style={styles.inputLabel}>Filter by Payment Status</Text>
+                <View style={styles.filterOptionRow}>
+                  {(["All", "Paid", "Unpaid"] as const).map((status) => {
+                    const active = filterPaymentStatus === status;
+                    return (
+                      <TouchableOpacity
+                        key={status}
+                        onPress={() => setFilterPaymentStatus(status)}
+                        style={[styles.filterOption, active && styles.filterOptionActive]}
+                      >
+                        {status === "Paid" && <Ionicons name="checkmark-circle" size={16} color={active ? "#fff" : BRAND_GREEN} />}
+                        {status === "Unpaid" && <Ionicons name="alert-circle" size={16} color={active ? "#fff" : ORANGE} />}
+                        <Text style={[styles.filterOptionText, active && { color: "#fff" }]}>{status}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => setShowFilterModal(false)}
+              style={styles.modalPrimary}
+            >
+              <Ionicons name="checkmark-circle" size={18} color="#fff" />
+              <Text style={styles.modalPrimaryText}>Apply</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -896,15 +1330,51 @@ function MetricCard({ icon, label, value, color }: {
 }
 
 /* ---------- Subscore Component ---------- */
-function Subscore({ label, value }: { label: string; value: number }) {
+function Subscore({ 
+  icon,
+  label, 
+  weight,
+  value, 
+  description, 
+  contribution 
+}: { 
+  icon?: string;
+  label: string;
+  weight: number;
+  value: number;
+  description?: string;
+  contribution?: number;
+}) {
   const color = value >= 80 ? BRAND_GREEN : value >= 60 ? ORANGE : RED;
   return (
-    <View style={styles.subscore}>
-      <View style={[styles.subscoreBar, { width: `${value}%`, backgroundColor: color }]} />
-      <View style={styles.subscoreMeta}>
-        <Text style={styles.subscoreLabel}>{label}</Text>
-        <Text style={[styles.subscoreValue, { color }]}>{Math.round(value)}</Text>
+    <View style={styles.subscoreCard}>
+      <View style={styles.subscoreHeader}>
+        <View style={[styles.subscoreIconContainer, { backgroundColor: color + "15" }]}>
+          {icon && <Ionicons name={icon as any} size={18} color={color} />}
+        </View>
+        <View style={styles.subscoreHeaderText}>
+          <Text style={styles.subscoreLabel}>{label}</Text>
+          <Text style={styles.subscoreWeight}>{weight}% weight</Text>
+        </View>
+        <View style={[styles.subscoreBadge, { backgroundColor: color + "20" }]}>
+          <Text style={[styles.subscoreValue, { color }]}>{Math.round(value)}</Text>
+        </View>
       </View>
+      
+      {description && (
+        <Text style={styles.subscoreDescription}>{description}</Text>
+      )}
+      
+      <View style={styles.subscoreProgressContainer}>
+        <View style={[styles.subscoreProgressBar, { width: `${value}%`, backgroundColor: color }]} />
+      </View>
+      
+      {contribution !== undefined && (
+        <View style={styles.subscoreContributionContainer}>
+          <Text style={styles.subscoreContributionLabel}>Contribution:</Text>
+          <Text style={[styles.subscoreContributionValue, { color }]}>+{contribution} points</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -960,11 +1430,86 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingHorizontal: 16,
     marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   sectionTitle: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "800",
+  },
+  filterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  filterButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  activeFiltersContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  activeFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: CARD_BG,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    ...shadow(1, 0.05),
+  },
+  activeFilterText: {
+    color: BRAND_DARK,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  clearAllButton: {
+    backgroundColor: ORANGE + "22",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: ORANGE + "44",
+  },
+  clearAllText: {
+    color: ORANGE,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  filterOptionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+  },
+  filterOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: LINE_SOFT,
+    backgroundColor: "#fff",
+  },
+  filterOptionActive: {
+    backgroundColor: BRAND_DARK,
+    borderColor: BRAND_DARK,
+  },
+  filterOptionText: {
+    color: BRAND_DARK,
+    fontWeight: "800",
+    fontSize: 13,
   },
 
   cardHeader: { 
@@ -1074,33 +1619,174 @@ const styles = StyleSheet.create({
     color: BRAND_DARK,
     marginBottom: 4,
   },
-  subscore: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    overflow: "hidden",
-    height: 36,
+  factorsGrid: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  subscoreCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 0,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    ...shadow(1, 0.05),
+  },
+  subscoreHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  subscoreIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
     justifyContent: "center",
+    marginRight: 12,
   },
-  subscoreBar: { 
-    position: "absolute", 
-    left: 0, 
-    top: 0, 
-    bottom: 0, 
-    borderRadius: 12 
-  },
-  subscoreMeta: { 
-    flexDirection: "row", 
-    justifyContent: "space-between", 
-    paddingHorizontal: 12 
+  subscoreHeaderText: {
+    flex: 1,
   },
   subscoreLabel: { 
     color: BRAND_DARK, 
-    fontWeight: "700",
-    fontSize: 12,
+    fontWeight: "800",
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  subscoreWeight: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  subscoreBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: 50,
+    alignItems: "center",
   },
   subscoreValue: { 
     fontWeight: "900",
+    fontSize: 16,
+  },
+  subscoreDescription: {
+    color: MUTED,
     fontSize: 12,
+    fontWeight: "500",
+    marginBottom: 12,
+    lineHeight: 16,
+  },
+  subscoreProgressContainer: {
+    height: 6,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 3,
+    overflow: "hidden",
+    marginBottom: 10,
+  },
+  subscoreProgressBar: {
+    height: "100%",
+    borderRadius: 3,
+  },
+  subscoreContributionContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
+  subscoreContributionLabel: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  subscoreContributionValue: {
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  breakdownInfo: {
+    backgroundColor: "#F0F9FF",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: BLUE + "30",
+  },
+  breakdownInfoText: {
+    color: BRAND_DARK,
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
+    lineHeight: 18,
+  },
+  calculationBox: {
+    backgroundColor: "#FAFBFC",
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    ...shadow(1, 0.05),
+  },
+  calculationHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
+  },
+  calculationTitle: {
+    color: BRAND_DARK,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  calculationSteps: {
+    gap: 10,
+    marginBottom: 12,
+  },
+  calculationStep: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+  },
+  calculationStepLabel: {
+    color: MUTED,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  calculationStepValue: {
+    color: BRAND_DARK,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  calculationDivider: {
+    height: 1,
+    backgroundColor: "#E5E7EB",
+    marginVertical: 12,
+  },
+  calculationTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 8,
+  },
+  calculationTotalLabel: {
+    color: BRAND_DARK,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  calculationTotalValue: {
+    fontSize: 20,
+    fontWeight: "900",
   },
 
   priorityCard: {
@@ -1252,6 +1938,37 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: MUTED,
     flex: 1,
+  },
+
+  paymentStatusSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  paymentStatusPaid: {
+    backgroundColor: BRAND_GREEN + "11",
+    borderWidth: 1,
+    borderColor: BRAND_GREEN + "33",
+  },
+  paymentStatusUnpaid: {
+    backgroundColor: ORANGE + "11",
+    borderWidth: 1,
+    borderColor: ORANGE + "33",
+  },
+  paymentStatusTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: BRAND_DARK,
+    marginBottom: 2,
+  },
+  paymentStatusSubtext: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: MUTED,
   },
 
   paymentsSection: {
@@ -1448,6 +2165,28 @@ const styles = StyleSheet.create({
   modalPrimaryText: { 
     color: "#fff", 
     fontWeight: "900" 
+  },
+
+  datePickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: LINE_SOFT,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  datePickerText: {
+    flex: 1,
+    color: BRAND_DARK,
+    fontWeight: "800",
+    fontSize: 15,
+  },
+  datePickerPlaceholder: {
+    color: MUTED,
+    fontWeight: "600",
   },
 });
 
