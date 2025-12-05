@@ -3,9 +3,10 @@ import axios from "axios";
 import { Platform } from "react-native";
 import type { MonthlySnapshot } from "../utils/financeTypes";
 
-const YOUR_COMPUTER_IP = "192.168.100.100";
+// const YOUR_COMPUTER_IP = "192.168.100.100";
+const YOUR_COMPUTER_IP = "172.20.10.9";
 const BASE_URL = Platform.OS === "android"
-  ? "http://192.168.100.100:3000"
+  ? "http://172.20.10.9:3000"
   : `http://${YOUR_COMPUTER_IP}:3000`;
 
 export interface MonthlyInsightsResponse {

@@ -82,6 +82,34 @@ const CATEGORY_ICONS: Record<(typeof CATEGORY_ORDER)[number], any> = {
   Others: "ellipsis-horizontal",
 };
 
+// Income categories
+const INCOME_CATEGORY_ORDER = [
+  "Salary",
+  "Investment",
+  "Gift",
+  "Freelance",
+  "Bonus",
+  "Others",
+] as const;
+
+const INCOME_CATEGORY_COLORS: Record<(typeof INCOME_CATEGORY_ORDER)[number], string> = {
+  Salary: "#22C55E",
+  Investment: "#3B82F6",
+  Gift: "#F97316",
+  Freelance: "#8B5CF6",
+  Bonus: "#EAB308",
+  Others: "#9CA3AF",
+};
+
+const INCOME_CATEGORY_ICONS: Record<(typeof INCOME_CATEGORY_ORDER)[number], any> = {
+  Salary: "briefcase",
+  Investment: "trending-up",
+  Gift: "gift",
+  Freelance: "construct",
+  Bonus: "ribbon",
+  Others: "ellipse",
+};
+
 const isDevClient = process.env.EXPO_PUBLIC_ENV !== "production";
 
 // ============================================================================
@@ -379,28 +407,44 @@ export default function Stats() {
   );
 
   // Process data
-  const processData = (records: ExpenseRecord[] | IncomeRecord[]) => {
+  const processData = (records: ExpenseRecord[] | IncomeRecord[], type: "expense" | "income") => {
     const source = startISO && endISO ? records.filter((r) => r.dateISO >= startISO && r.dateISO < endISO) : records;
     const prevSource =
       prevStartISO && prevEndISO ? records.filter((r) => r.dateISO >= prevStartISO && r.dateISO < prevEndISO) : [];
 
+    // Use appropriate category list based on type
     const byCat: Record<string, number> = {};
-    CATEGORY_ORDER.forEach((c) => (byCat[c] = 0));
-    source.forEach((r) => {
-      const cat = (r.category && CATEGORY_ORDER.includes(r.category as any) ? r.category : "Others") as (typeof CATEGORY_ORDER)[number];
-      byCat[cat] += Number(r.amount) || 0;
-    });
+    
+    if (type === "income") {
+      INCOME_CATEGORY_ORDER.forEach((c) => (byCat[c] = 0));
+      source.forEach((r) => {
+        const cat = (r.category && INCOME_CATEGORY_ORDER.includes(r.category as any) ? r.category : "Others") as (typeof INCOME_CATEGORY_ORDER)[number];
+        byCat[cat] += Number(r.amount) || 0;
+      });
+    } else {
+      CATEGORY_ORDER.forEach((c) => (byCat[c] = 0));
+      source.forEach((r) => {
+        const cat = (r.category && CATEGORY_ORDER.includes(r.category as any) ? r.category : "Others") as (typeof CATEGORY_ORDER)[number];
+        byCat[cat] += Number(r.amount) || 0;
+      });
+    }
 
     const total = Object.values(byCat).reduce((s, v) => s + v, 0);
     const prevTotal = prevSource.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     const trend = prevTotal > 0 ? Math.round(((total - prevTotal) / prevTotal) * 100) : 0;
     const days = getDaysInPeriod(period);
 
-    const categories = CATEGORY_ORDER.map((name) => {
-      const amount = byCat[name];
-      const pct = total > 0 ? Math.round((amount / total) * 100) : 0;
-      return { name, amount, pct, color: CATEGORY_COLORS[name], icon: CATEGORY_ICONS[name] };
-    })
+    const categories = (type === "income"
+      ? INCOME_CATEGORY_ORDER.map((name) => {
+          const amount = byCat[name];
+          const pct = total > 0 ? Math.round((amount / total) * 100) : 0;
+          return { name, amount, pct, color: INCOME_CATEGORY_COLORS[name], icon: INCOME_CATEGORY_ICONS[name] };
+        })
+      : CATEGORY_ORDER.map((name) => {
+          const amount = byCat[name];
+          const pct = total > 0 ? Math.round((amount / total) * 100) : 0;
+          return { name, amount, pct, color: CATEGORY_COLORS[name], icon: CATEGORY_ICONS[name] };
+        }))
       .filter((r) => r.amount > 0)
       .sort((a, b) => b.amount - a.amount);
 
@@ -422,8 +466,8 @@ export default function Stats() {
     };
   };
 
-  const expenseData = useMemo(() => processData(expenses), [expenses, startISO, endISO, prevStartISO, prevEndISO, period]);
-  const incomeData = useMemo(() => processData(incomes), [incomes, startISO, endISO, prevStartISO, prevEndISO, period]);
+  const expenseData = useMemo(() => processData(expenses, "expense"), [expenses, startISO, endISO, prevStartISO, prevEndISO, period]);
+  const incomeData = useMemo(() => processData(incomes, "income"), [incomes, startISO, endISO, prevStartISO, prevEndISO, period]);
 
   // Cards
   const expenseCard: CardData = {

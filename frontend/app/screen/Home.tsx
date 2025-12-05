@@ -869,7 +869,7 @@ const debtHealth = useMemo(() => {
                   style={[styles.actionBox, { backgroundColor: "#F3E8FF" }]}
                   onPress={() => router.push("/screen/Debt")}
                 >
-                  <Ionicons name="card-outline" size={22} color="#1E3932" />
+                  <Ionicons name="card-outline" size={28} color="#1E3932" />
                   <Text style={styles.actionText}>Debt</Text>
                 </TouchableOpacity>
               </View>

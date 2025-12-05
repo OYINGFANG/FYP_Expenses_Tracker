@@ -9,8 +9,8 @@
 // app/services/api.ts
 // Two bases: keep your existing chat server (3000) AND add Spring API (8080 or ngrok HTTPS)
 
-export const CHAT_SERVER_URL = "http://192.168.100.100:3000";   // your current Node/Express for /chat
-export const API_SERVER_URL  = "http://192.168.100.100:8080";   // your Spring Boot for /api/expenses
+export const CHAT_SERVER_URL = "http://172.20.10.9:3000";   // your current Node/Express for /chat
+export const API_SERVER_URL  = "http://172.20.10.9:8080";   // your Spring Boot for /api/expenses
 
 // Android emulator? use http://10.0.2.2:<port>
 // iOS simulator? use http://localhost:<port>

@@ -39,7 +39,7 @@ This feature analyzes a user's monthly spending behavior using OpenAI and provid
 1. Update the backend URL in `frontend/app/services/monthlyInsights.ts` if needed:
    - For Android emulator: Use `http://10.0.2.2:3000`
    - For iOS simulator: Use `http://localhost:3000`
-   - For real device: Use your computer's IP (e.g., `http://192.168.100.100:3000`)
+   - For real device: Use your computer's IP (e.g., `http://10.101.126.174:3000`)
 
 2. The feature is automatically available on the Wallet Overview screen (Stats screen).
 

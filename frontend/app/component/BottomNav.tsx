@@ -5,7 +5,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useRouter } from "expo-router"; 
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
 
 const BottomNav = () => {
   const router = useRouter();
@@ -25,8 +25,17 @@ const BottomNav = () => {
       </TouchableOpacity>
 
       {/* Center Auri AI */}
-      <TouchableOpacity style={styles.centerButton} onPress={() => router.push("/screen/ChatScreen")}>
-        <View style={styles.centerIcon}></View>
+      <TouchableOpacity
+        style={styles.centerButton}
+        onPress={() => router.push("/screen/ChatScreen")}
+      >
+        <View style={styles.centerIcon}>
+          <Image
+            source={require("@/assets/images/Auriicon.png")}
+            style={styles.centerIconImage}
+            resizeMode="contain"
+          />
+        </View>
         <Text style={[styles.label, styles.centerLabel]}>Auri AI</Text>
       </TouchableOpacity>
 
@@ -88,11 +97,17 @@ const styles = StyleSheet.create({
   centerIcon: {
     width: 85,
     height: 85,
-    borderRadius: 45,
+    borderRadius: 42.5,
     backgroundColor: "#C7E59E",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 8,
     borderColor: "#115D59",
+    overflow: "hidden",        // 🔑 clip image to the circle
+  },
+  centerIconImage: {
+    width: "160%",               // make it big but with a tiny margin
+    height: "160%",
+    resizeMode: "contain",
   },
 });

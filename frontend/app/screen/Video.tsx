@@ -34,11 +34,11 @@ type Message = {
   delivered?: boolean;
 };
 
-const YOUR_COMPUTER_IP = "192.168.0.96";
+const YOUR_COMPUTER_IP = "172.20.10.9";
 
 const BASE_URL =
   Platform.OS === "android"
-    ? "http://192.168.0.96:3000"
+    ? "http://172.20.10.9:3000"
     : `http://${YOUR_COMPUTER_IP}:3000`;
 
 const sendMessageToBot = async (message: string) => {
