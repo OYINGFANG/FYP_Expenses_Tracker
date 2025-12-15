@@ -8,6 +8,7 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { collection, addDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { subscribeUserCurrency, getCachedCurrency, getCurrencySymbol, type Currency } from "../utils/currencyUtils";
 
 const SAVINGS_CATEGORY_LABELS = ["Savings", "Saving", "Emergency Fund", "Emergency", "Investments", "Investment"];
 const isSavingsCategory = (label: string) =>
@@ -22,6 +23,7 @@ export default function AddRecord() {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [note, setNote] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash"); // ✅ Added
+  const [currency, setCurrency] = useState<Currency>("MYR");
   const slideAnim = useRef(new Animated.Value(0)).current;
   const params = useLocalSearchParams();
   const prevParamsRef = useRef<string>("");
@@ -36,6 +38,42 @@ export default function AddRecord() {
   
   // Create a stable string key from params to detect changes
   const paramsKey = `${amountParam || ""}|${dateParam || ""}|${noteParam || ""}|${categoryParam || ""}|${merchantParam || ""}|${paymentMethodParam || ""}`;
+
+  // Load user's currency preference
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    const loadCurrency = async () => {
+      try {
+        // First try to get cached currency for immediate display
+        const cachedCurrency = await getCachedCurrency();
+        setCurrency(cachedCurrency);
+
+        // Then subscribe to Firestore for real-time updates
+        const userId = await AsyncStorage.getItem("userId");
+        if (userId) {
+          // Extract UID if it's a path (handle both "/USERS/uid" and "uid" formats)
+          const parts = userId.split("/");
+          const uid = userId.startsWith("/USERS/") && parts.length >= 3 ? parts[2] : userId;
+          unsubscribe = subscribeUserCurrency(uid, (newCurrency) => {
+            setCurrency(newCurrency);
+          });
+        }
+      } catch (error) {
+        console.error("Error loading currency:", error);
+        // Default to MYR if there's an error
+        setCurrency("MYR");
+      }
+    };
+
+    loadCurrency();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (prevParamsRef.current === paramsKey) return;
@@ -269,7 +307,7 @@ export default function AddRecord() {
             {selected === "Expenses" ? "How much did you spend?" : "How much did you earn?"}
           </Text>
           <View style={styles.amountDisplayAlt}>
-            <Text style={styles.currencySymbolAlt}>RM</Text>
+            <Text style={styles.currencySymbolAlt}>{getCurrencySymbol(currency)}</Text>
             <Text style={styles.amountValueAlt}>{inputValue || "0"}</Text>
           </View>
         </View>

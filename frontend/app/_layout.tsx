@@ -5,6 +5,7 @@ import { Provider as ReduxProvider } from "react-redux";
 import * as Notifications from "expo-notifications";
 import enMessages from "./screen/Game/locales/en.json";
 import { store } from "./screen/Game/store/store";
+import { OnboardingProvider } from "./context/OnboardingContext";
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -31,7 +32,8 @@ export default function RootLayout() {
   return (
     <ReduxProvider store={store}>
       <IntlProvider locale="en" messages={enMessages}>
-        <Stack screenOptions={{ headerShown: false }}>
+        <OnboardingProvider>
+          <Stack screenOptions={{ headerShown: false }}>
           {/* Main Screens */}
           <Stack.Screen name="screen/Home" />
 
@@ -56,7 +58,14 @@ export default function RootLayout() {
             name="screen/Game/aboutPage/AboutPage"
             options={{ headerShown: false, animation: "fade" }}
           />
+
+          {/* Onboarding Screen */}
+          <Stack.Screen
+            name="screen/Onboarding"
+            options={{ headerShown: false, animation: "fade" }}
+          />
         </Stack>
+        </OnboardingProvider>
       </IntlProvider>
     </ReduxProvider>
   );

@@ -120,7 +120,12 @@ const GameHeader: React.FC = () => {
   const handleCloseGame = () => {
     if (isModalOpen) closeModal();
     dispatch(closeGame());
-    router.dismissAll(); // close any modals/sheets first
+    // Try to dismiss modals, but don't fail if there's no navigation stack
+    try {
+      router.dismissAll();
+    } catch (e) {
+      // Ignore navigation errors - router.replace will handle navigation
+    }
     router.replace('/screen/Game/titlePage/TitlePage'); // path must match your file
   };
 

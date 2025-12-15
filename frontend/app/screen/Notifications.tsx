@@ -53,6 +53,8 @@ const getNotificationIcon = (type: AppNotification["type"]) => {
       return "wallet-outline";
     case "budgetReminder":
       return "pie-chart-outline";
+    case "badgeAchievement":
+      return "trophy";
     default:
       return "notifications-outline";
   }
@@ -66,6 +68,8 @@ const getNotificationColor = (type: AppNotification["type"]) => {
       return BRAND_GREEN;
     case "budgetReminder":
       return ORANGE;
+    case "badgeAchievement":
+      return BRAND_GREEN;
     default:
       return BLUE;
   }
@@ -167,11 +171,17 @@ function NotificationItem({
   );
 }
 
+/* ---------- Filter Types ---------- */
+type StatusFilter = "all" | "unread" | "read";
+type TypeFilter = "all" | "debtReminder" | "savingsReminder" | "budgetReminder" | "badgeAchievement";
+
 /* ---------- Main Screen ---------- */
 export default function Notifications() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -245,6 +255,18 @@ export default function Notifications() {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  // Filter notifications based on selected filters
+  const filteredNotifications = notifications.filter((notif) => {
+    // Status filter
+    if (statusFilter === "unread" && notif.read) return false;
+    if (statusFilter === "read" && !notif.read) return false;
+
+    // Type filter
+    if (typeFilter !== "all" && notif.type !== typeFilter) return false;
+
+    return true;
+  });
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={{ flex: 1 }}>
@@ -256,6 +278,7 @@ export default function Notifications() {
           onPress={() => router.back()}
           style={styles.headerBtn}
           activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Ionicons name="chevron-back" size={22} color="#fff" />
         </TouchableOpacity>
@@ -286,6 +309,205 @@ export default function Notifications() {
         </View>
       )}
 
+      {/* Filter Section */}
+      {notifications.length > 0 && (
+        <View style={styles.filterContainer}>
+          {/* Status Filters */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Status:</Text>
+            <View style={styles.filterChips}>
+              <TouchableOpacity
+                onPress={() => setStatusFilter("all")}
+                style={[
+                  styles.filterChip,
+                  statusFilter === "all" && styles.filterChipActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    statusFilter === "all" && styles.filterChipTextActive,
+                  ]}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setStatusFilter("unread")}
+                style={[
+                  styles.filterChip,
+                  statusFilter === "unread" && styles.filterChipActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    statusFilter === "unread" && styles.filterChipTextActive,
+                  ]}
+                >
+                  Unread
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setStatusFilter("read")}
+                style={[
+                  styles.filterChip,
+                  statusFilter === "read" && styles.filterChipActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    statusFilter === "read" && styles.filterChipTextActive,
+                  ]}
+                >
+                  Read
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Type Filters */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Type:</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterChips}
+            >
+              <TouchableOpacity
+                onPress={() => setTypeFilter("all")}
+                style={[
+                  styles.filterChip,
+                  typeFilter === "all" && styles.filterChipActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    typeFilter === "all" && styles.filterChipTextActive,
+                  ]}
+                >
+                  All
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setTypeFilter("debtReminder")}
+                style={[
+                  styles.filterChip,
+                  typeFilter === "debtReminder" && styles.filterChipActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="card-outline"
+                  size={14}
+                  color={
+                    typeFilter === "debtReminder"
+                      ? "#fff"
+                      : BRAND_DARK
+                  }
+                />
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    typeFilter === "debtReminder" &&
+                      styles.filterChipTextActive,
+                  ]}
+                >
+                  Debt
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setTypeFilter("savingsReminder")}
+                style={[
+                  styles.filterChip,
+                  typeFilter === "savingsReminder" && styles.filterChipActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="wallet-outline"
+                  size={14}
+                  color={
+                    typeFilter === "savingsReminder"
+                      ? "#fff"
+                      : BRAND_DARK
+                  }
+                />
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    typeFilter === "savingsReminder" &&
+                      styles.filterChipTextActive,
+                  ]}
+                >
+                  Savings
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setTypeFilter("budgetReminder")}
+                style={[
+                  styles.filterChip,
+                  typeFilter === "budgetReminder" && styles.filterChipActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="pie-chart-outline"
+                  size={14}
+                  color={
+                    typeFilter === "budgetReminder"
+                      ? "#fff"
+                      : BRAND_DARK
+                  }
+                />
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    typeFilter === "budgetReminder" &&
+                      styles.filterChipTextActive,
+                  ]}
+                >
+                  Budget
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setTypeFilter("badgeAchievement")}
+                style={[
+                  styles.filterChip,
+                  typeFilter === "badgeAchievement" && styles.filterChipActive,
+                ]}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="trophy"
+                  size={14}
+                  color={
+                    typeFilter === "badgeAchievement"
+                      ? "#fff"
+                      : BRAND_DARK
+                  }
+                />
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    typeFilter === "badgeAchievement" &&
+                      styles.filterChipTextActive,
+                  ]}
+                >
+                  Badges
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
       {/* Notifications List */}
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -300,16 +522,35 @@ export default function Notifications() {
             You are all caught up! New notifications will appear here.
           </Text>
         </View>
+      ) : filteredNotifications.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="filter-outline" size={64} color={MUTED} />
+          <Text style={styles.emptyTitle}>No notifications match your filters</Text>
+          <Text style={styles.emptyText}>
+            Try adjusting your filter options to see more notifications.
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              setStatusFilter("all");
+              setTypeFilter("all");
+            }}
+            style={styles.resetFilterButton}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.resetFilterButtonText}>Clear Filters</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-          {unreadCount > 0 && (
+          {unreadCount > 0 && statusFilter !== "read" && (
             <View style={styles.unreadBadge}>
               <Text style={styles.unreadBadgeText}>
-                {unreadCount} unread notification{unreadCount !== 1 ? "s" : ""}
+                {filteredNotifications.filter((n) => !n.read).length} unread notification
+                {filteredNotifications.filter((n) => !n.read).length !== 1 ? "s" : ""}
               </Text>
             </View>
           )}
-          {notifications.map((notif) => (
+          {filteredNotifications.map((notif) => (
             <NotificationItem
               key={notif.id}
               notification={notif}
@@ -352,6 +593,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: "center",
+    pointerEvents: "none",
   },
   actionsContainer: {
     flexDirection: "row",
@@ -500,6 +742,64 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderRadius: 16,
     marginLeft: 16,
+  },
+  filterContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    marginBottom: 8,
+  },
+  filterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  filterLabel: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 13,
+    fontWeight: "700",
+    minWidth: 50,
+  },
+  filterChips: {
+    flexDirection: "row",
+    gap: 8,
+    flex: 1,
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  filterChipActive: {
+    backgroundColor: CARD_BG,
+    borderColor: CARD_BG,
+  },
+  filterChipText: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  filterChipTextActive: {
+    color: BRAND_DARK,
+  },
+  resetFilterButton: {
+    marginTop: 16,
+    backgroundColor: CARD_BG,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 12,
+    ...shadow(2, 0.06),
+  },
+  resetFilterButtonText: {
+    color: BRAND_DARK,
+    fontSize: 14,
+    fontWeight: "700",
   },
 });
 

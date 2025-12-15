@@ -4,11 +4,38 @@ import FontAwesome5 from "@expo/vector-icons/FontAwesome5";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useRouter } from "expo-router"; 
-import React from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
+import { useOnboarding } from "../context/OnboardingContext";
 
 const BottomNav = () => {
   const router = useRouter();
+  const { isOnboardingActive, currentStep, nextStep, setHighlightPosition } = useOnboarding();
+  
+  const walletTabRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const auriTabRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const [walletTabLayout, setWalletTabLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [auriTabLayout, setAuriTabLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+
+  // Update highlight position when step changes or layout changes
+  useEffect(() => {
+    if (isOnboardingActive && currentStep === 2 && walletTabLayout) {
+      console.log("Setting Wallet tab highlight position:", walletTabLayout);
+      // Make the highlight box wider for the Wallet tab
+      setHighlightPosition({
+        ...walletTabLayout,
+        width: walletTabLayout.width + 30, // Increase width by 40px
+        height: walletTabLayout.height + 30,
+        x: walletTabLayout.x - 15, // Shift left by 20px to center the wider box
+        y: walletTabLayout.y - 15,
+      });
+    } else if (isOnboardingActive && currentStep === 3 && auriTabLayout) {
+      console.log("Setting Auri AI tab highlight position:", auriTabLayout);
+      setHighlightPosition(auriTabLayout);
+    } else if (!isOnboardingActive) {
+      setHighlightPosition(null);
+    }
+  }, [isOnboardingActive, currentStep, walletTabLayout, auriTabLayout, setHighlightPosition]);
 
   return (
     <View style={styles.container}>
@@ -19,15 +46,46 @@ const BottomNav = () => {
       </TouchableOpacity>
 
       {/* History */}
-      <TouchableOpacity style={[styles.tab, styles.historyTab]} onPress={() => router.push("/screen/WalletOverview")}>
+      <TouchableOpacity
+        ref={walletTabRef}
+        style={[styles.tab, styles.historyTab]}
+        onPress={() => {
+          if (isOnboardingActive && currentStep === 2) {
+            // Complete the step when user taps Wallet during onboarding (Step 3 = view_wallet, displayed as "3 / 6")
+            nextStep();
+          }
+          router.push("/screen/WalletOverview");
+        }}
+        onLayout={(event) => {
+          const { x, y, width, height } = event.nativeEvent.layout;
+          walletTabRef.current?.measureInWindow((px, py, fwidth, fheight) => {
+            console.log("Wallet tab layout:", { x: px, y: py, width: fwidth, height: fheight });
+            setWalletTabLayout({ x: px, y: py, width: fwidth, height: fheight });
+          });
+        }}
+      >
         <FontAwesome5 name="history" size={25} color="#fff" />
         <Text style={styles.label}>Wallet</Text>
       </TouchableOpacity>
 
       {/* Center Auri AI */}
       <TouchableOpacity
+        ref={auriTabRef}
         style={styles.centerButton}
-        onPress={() => router.push("/screen/ChatScreen")}
+        onPress={() => {
+          if (isOnboardingActive && currentStep === 3) {
+            // Complete the step when user taps Auri AI during onboarding (Step 4 = auri_ai, displayed as "4 / 6")
+            nextStep();
+          }
+          router.push("/screen/Avatar");
+        }}
+        onLayout={(event) => {
+          const { x, y, width, height } = event.nativeEvent.layout;
+          auriTabRef.current?.measureInWindow((px, py, fwidth, fheight) => {
+            console.log("Auri AI tab layout:", { x: px, y: py, width: fwidth, height: fheight });
+            setAuriTabLayout({ x: px, y: py, width: fwidth, height: fheight });
+          });
+        }}
       >
         <View style={styles.centerIcon}>
           <Image

@@ -11,6 +11,8 @@ const path = require("path");
 const cors = require("cors");
 const OpenAI = require("openai");
 const admin = require("firebase-admin");
+const nodemailer = require("nodemailer");
+const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 const upload = multer({ dest: "uploads/" });
@@ -67,6 +69,417 @@ if (!RAPID_API_KEY) {
 }
 if (!ASSEMBLYAI_KEY) {
   console.warn("⚠️ Missing ASSEMBLYAI_KEY (transcription may not work)");
+}
+
+// ======================================================
+// 📧 Email Verification Setup (Nodemailer)
+// ======================================================
+// Initialize Nodemailer transporter
+// For testing: Using Ethereal Email (fake SMTP for testing)
+// For production: Configure real SMTP in .env file:
+// EMAIL_HOST=smtp.gmail.com (or your SMTP server)
+// EMAIL_PORT=587
+// EMAIL_USER=your-email@gmail.com
+// EMAIL_PASS=your-app-password (for Gmail, use App Password, not regular password)
+// EMAIL_FROM=your-email@gmail.com
+// USE_TEST_EMAIL=false
+
+let transporter = null;
+let transporterInitialized = false;
+const USE_TEST_EMAIL = process.env.USE_TEST_EMAIL !== "false"; // Default to true for testing
+const EMAIL_HOST = process.env.EMAIL_HOST;
+const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || "587");
+const EMAIL_USER = process.env.EMAIL_USER;
+const EMAIL_PASS = process.env.EMAIL_PASS;
+let EMAIL_FROM = process.env.EMAIL_FROM || EMAIL_USER || "noreply@auri.app";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:8081";
+
+// In-memory store for verification tokens (in production, use Redis or database)
+const verificationTokens = new Map();
+
+// In-memory store for OTP codes (in production, use Redis or database)
+const otpStore = new Map(); // userId -> { code, expiresAt, email, createdAt }
+
+// Initialize transporter
+(async () => {
+  try {
+    if (USE_TEST_EMAIL && !EMAIL_USER && !EMAIL_PASS) {
+      // Create a new test account dynamically
+      console.log("🔧 Creating Ethereal Email test account...");
+      const testAccount = await nodemailer.createTestAccount();
+      
+      transporter = nodemailer.createTransport({
+        host: "smtp.ethereal.email",
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+
+      EMAIL_FROM = testAccount.user; // Set from address to test account email
+      transporterInitialized = true;
+
+      console.log("✅ Email server ready (TEST MODE - using Ethereal Email)");
+      console.log("   📧 View sent emails at: https://ethereal.email");
+      console.log("   📧 Test account created:");
+      console.log("      User: " + testAccount.user);
+      console.log("      Pass: " + testAccount.pass);
+    } else if (EMAIL_USER && EMAIL_PASS) {
+      // Use provided credentials (test or production)
+      transporter = nodemailer.createTransport({
+        host: EMAIL_HOST || (USE_TEST_EMAIL ? "smtp.ethereal.email" : "smtp.gmail.com"),
+        port: EMAIL_PORT,
+        secure: EMAIL_PORT === 465,
+        auth: {
+          user: EMAIL_USER,
+          pass: EMAIL_PASS,
+        },
+      });
+
+      // Verify connection
+      try {
+        await transporter.verify();
+        EMAIL_FROM = EMAIL_FROM || EMAIL_USER; // Ensure EMAIL_FROM is set
+        transporterInitialized = true;
+        
+        if (USE_TEST_EMAIL) {
+          console.log("✅ Email server ready (TEST MODE - using Ethereal Email)");
+          console.log("   📧 View sent emails at: https://ethereal.email");
+          console.log("   📧 Test account: " + EMAIL_USER);
+        } else {
+          console.log("✅ Email server is ready to send messages (PRODUCTION MODE)");
+        }
+      } catch (verifyError) {
+        // If verification fails and we're in test mode, try to create a new test account
+        if (USE_TEST_EMAIL) {
+          console.warn("⚠️ Provided test account credentials failed. Creating new test account...");
+          const testAccount = await nodemailer.createTestAccount();
+          
+          transporter = nodemailer.createTransport({
+            host: "smtp.ethereal.email",
+            port: 587,
+            secure: false,
+            auth: {
+              user: testAccount.user,
+              pass: testAccount.pass,
+            },
+          });
+          
+          EMAIL_FROM = testAccount.user; // Set from address to test account email
+          transporterInitialized = true;
+          
+          console.log("✅ Email server ready (TEST MODE - using auto-generated Ethereal Email account)");
+          console.log("   📧 View sent emails at: https://ethereal.email");
+          console.log("   📧 New test account:");
+          console.log("      User: " + testAccount.user);
+          console.log("      Pass: " + testAccount.pass);
+        } else {
+          throw verifyError; // Re-throw if production mode
+        }
+      }
+    } else {
+      console.warn("⚠️ Email credentials not configured. Email verification will not work.");
+      console.warn("   For testing: Leave EMAIL_USER and EMAIL_PASS unset to auto-create test account");
+      console.warn("   For production: Set EMAIL_USER and EMAIL_PASS in .env file");
+    }
+  } catch (error) {
+    console.error("❌ Email transporter initialization failed:", error.message);
+    if (USE_TEST_EMAIL && EMAIL_USER) {
+      console.error("   The provided test account credentials may be expired.");
+      console.error("   Remove EMAIL_USER and EMAIL_PASS from .env to auto-create a new test account.");
+    } else {
+      console.error("   Make sure EMAIL_USER and EMAIL_PASS are set correctly in .env");
+    }
+  }
+})();
+
+/**
+ * Generate a 6-digit OTP code
+ */
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+}
+
+/**
+ * Send OTP code via email
+ */
+async function sendOTPEmail(email, userId, username) {
+  // Ensure transporter is initialized
+  if (!transporter || !transporterInitialized) {
+    // Try to initialize if not already done
+    try {
+      if (USE_TEST_EMAIL && !EMAIL_USER && !EMAIL_PASS) {
+        const testAccount = await nodemailer.createTestAccount();
+        transporter = nodemailer.createTransport({
+          host: "smtp.ethereal.email",
+          port: 587,
+          secure: false,
+          auth: {
+            user: testAccount.user,
+            pass: testAccount.pass,
+          },
+        });
+        EMAIL_FROM = testAccount.user;
+        transporterInitialized = true;
+        console.log("✅ Email transporter initialized with auto-generated test account");
+      } else {
+        throw new Error("Email transporter not configured. Please set EMAIL_USER and EMAIL_PASS in .env");
+      }
+    } catch (initError) {
+      throw new Error("Email transporter not configured: " + initError.message);
+    }
+  }
+
+  // Generate 6-digit OTP
+  const otpCode = generateOTP();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  // Store OTP (in production, save to database)
+  otpStore.set(userId, {
+    code: otpCode,
+    email,
+    expiresAt,
+    createdAt: new Date(),
+    attempts: 0, // Track verification attempts
+  });
+
+  // Ensure EMAIL_FROM is set
+  const fromAddress = EMAIL_FROM || "noreply@auri.app";
+  if (!fromAddress) {
+    throw new Error("EMAIL_FROM is not configured");
+  }
+
+  // Email content with OTP
+  const mailOptions = {
+    from: USE_TEST_EMAIL 
+      ? `"Auri App (Test)" <${fromAddress}>`
+      : `"Auri App" <${fromAddress}>`,
+    to: email,
+    subject: "Your verification code" + (USE_TEST_EMAIL ? " (TEST)" : ""),
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #1E5449, #154C42); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .otp-box { background: #1E3932; color: white; font-size: 32px; font-weight: bold; text-align: center; padding: 20px; border-radius: 10px; letter-spacing: 8px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Welcome to Auri! 👋</h1>
+            </div>
+            <div class="content">
+              <h2>Hi ${username || "there"},</h2>
+              <p>Thank you for signing up! Use the verification code below to complete your registration:</p>
+              <div class="otp-box">${otpCode}</div>
+              <p><strong>This code will expire in 10 minutes.</strong></p>
+              <p>If you didn't create an account, you can safely ignore this email.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} Auri. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `,
+    text: `
+      Welcome to Auri!
+      
+      Hi ${username || "there"},
+      
+      Thank you for signing up! Use the verification code below to complete your registration:
+      
+      ${otpCode}
+      
+      This code will expire in 10 minutes.
+      
+      If you didn't create an account, you can safely ignore this email.
+      
+      © ${new Date().getFullYear()} Auri. All rights reserved.
+    `,
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log("✅ OTP email sent:", info.messageId);
+    console.log("   OTP code for", email, ":", otpCode); // Log OTP for testing (remove in production)
+    
+    // If using test email, log the preview URL
+    if (USE_TEST_EMAIL && info.messageId) {
+      const previewURL = nodemailer.getTestMessageUrl(info);
+      if (previewURL) {
+        console.log("🔗 Preview email at:", previewURL);
+      }
+    }
+    
+    return { success: true, otpCode: USE_TEST_EMAIL ? otpCode : undefined, previewURL: USE_TEST_EMAIL && info.messageId ? nodemailer.getTestMessageUrl(info) : null };
+  } catch (error) {
+    console.error("❌ Error sending OTP email:", error);
+    throw error;
+  }
+}
+
+/**
+ * Send verification email (legacy function - keeping for backward compatibility)
+ */
+async function sendVerificationEmail(email, userId, username) {
+  // Ensure transporter is initialized
+  if (!transporter || !transporterInitialized) {
+    // Try to initialize if not already done
+    try {
+      if (USE_TEST_EMAIL && !EMAIL_USER && !EMAIL_PASS) {
+        const testAccount = await nodemailer.createTestAccount();
+        transporter = nodemailer.createTransport({
+          host: "smtp.ethereal.email",
+          port: 587,
+          secure: false,
+          auth: {
+            user: testAccount.user,
+            pass: testAccount.pass,
+          },
+        });
+        EMAIL_FROM = testAccount.user;
+        transporterInitialized = true;
+        console.log("✅ Email transporter initialized with auto-generated test account");
+      } else {
+        throw new Error("Email transporter not configured. Please set EMAIL_USER and EMAIL_PASS in .env");
+      }
+    } catch (initError) {
+      throw new Error("Email transporter not configured: " + initError.message);
+    }
+  }
+
+  // Generate verification token
+  const token = uuidv4();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+  // Store token (in production, save to database)
+  verificationTokens.set(token, {
+    userId,
+    email,
+    expiresAt,
+    createdAt: new Date(),
+  });
+
+  // Create verification link
+  const verificationLink = `${FRONTEND_URL}/verify-email?token=${token}&userId=${userId}`;
+
+  // Ensure EMAIL_FROM is set
+  const fromAddress = EMAIL_FROM || "noreply@auri.app";
+  if (!fromAddress) {
+    throw new Error("EMAIL_FROM is not configured");
+  }
+
+  // Email content
+  const mailOptions = {
+    from: USE_TEST_EMAIL 
+      ? `"Auri App (Test)" <${fromAddress}>`
+      : `"Auri App" <${fromAddress}>`,
+    to: email,
+    subject: "Verify your email address" + (USE_TEST_EMAIL ? " (TEST)" : ""),
+    html: `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #1E5449, #154C42); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .button { display: inline-block; padding: 12px 30px; background: #1E3932; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Welcome to Auri! 👋</h1>
+            </div>
+            <div class="content">
+              <h2>Hi ${username || "there"},</h2>
+              <p>Thank you for signing up! Please verify your email address to complete your registration.</p>
+              <p>Click the button below to verify your email:</p>
+              <div style="text-align: center;">
+                <a href="${verificationLink}" class="button">Verify Email Address</a>
+              </div>
+              <p>Or copy and paste this link into your browser:</p>
+              <p style="word-break: break-all; color: #666; font-size: 12px;">${verificationLink}</p>
+              <p><strong>This link will expire in 24 hours.</strong></p>
+              <p>If you didn't create an account, you can safely ignore this email.</p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} Auri. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `,
+    text: `
+      Welcome to Auri!
+      
+      Hi ${username || "there"},
+      
+      Thank you for signing up! Please verify your email address by clicking the link below:
+      
+      ${verificationLink}
+      
+      This link will expire in 24 hours.
+      
+      If you didn't create an account, you can safely ignore this email.
+      
+      © ${new Date().getFullYear()} Auri. All rights reserved.
+    `,
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log("✅ Verification email sent:", info.messageId);
+    
+    // If using test email, log the preview URL
+    if (USE_TEST_EMAIL && info.messageId) {
+      const previewURL = nodemailer.getTestMessageUrl(info);
+      if (previewURL) {
+        console.log("🔗 Preview email at:", previewURL);
+      }
+    }
+    
+    return { 
+      success: true, 
+      token, 
+      previewURL: USE_TEST_EMAIL && info.messageId ? nodemailer.getTestMessageUrl(info) : null 
+    };
+  } catch (error) {
+    console.error("❌ Error sending verification email:", error);
+    throw error;
+  }
+}
+
+/**
+ * Verify email token
+ */
+function verifyEmailToken(token) {
+  const tokenData = verificationTokens.get(token);
+  
+  if (!tokenData) {
+    return { valid: false, error: "Invalid or expired token" };
+  }
+
+  if (new Date() > tokenData.expiresAt) {
+    verificationTokens.delete(token);
+    return { valid: false, error: "Token has expired" };
+  }
+
+  return { valid: true, userId: tokenData.userId, email: tokenData.email };
 }
 
 // ======================================================
@@ -1755,6 +2168,335 @@ app.post("/api/monthly-insights", async (req, res) => {
   } catch (err) {
     console.error("❌ OpenAI error:", err.response?.data || err.message);
     res.status(500).json({ error: err.message || "Failed to generate insights" });
+  }
+});
+
+// ======================================================
+// 📧 Email Verification Endpoints
+// ======================================================
+
+/**
+ * POST /api/email/send-verification
+ * Send verification email to user
+ */
+app.post("/api/email/send-verification", async (req, res) => {
+  try {
+    const { email, userId, username } = req.body;
+
+    if (!email || !userId) {
+      return res.status(400).json({ error: "Email and userId are required" });
+    }
+
+    // Wait a bit for transporter initialization if needed
+    if (!transporterInitialized) {
+      // Wait up to 2 seconds for initialization
+      let waited = 0;
+      while (!transporterInitialized && waited < 2000) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        waited += 100;
+      }
+    }
+
+    if (!transporter || !transporterInitialized) {
+      return res.status(500).json({ 
+        error: "Email service not configured",
+        message: "Please wait a moment and try again, or check server logs" 
+      });
+    }
+
+    // Use OTP instead of verification link
+    const result = await sendOTPEmail(email, userId, username || "User");
+
+    const response = { 
+      success: true, 
+      message: "OTP code sent successfully" 
+    };
+
+    // Include preview URL and OTP code if using test email (for testing purposes)
+    if (USE_TEST_EMAIL && result) {
+      if (result.previewURL) {
+        response.previewURL = result.previewURL;
+      }
+      if (result.otpCode) {
+        response.otpCode = result.otpCode; // Only in test mode for debugging
+      }
+      response.testMode = true;
+      console.log("📧 Test email preview URL:", result.previewURL);
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error("❌ Error sending verification email:", error);
+    console.error("   Error details:", error.stack);
+    res.status(500).json({ 
+      error: "Failed to send verification email",
+      message: error.message,
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined
+    });
+  }
+});
+
+/**
+ * POST /api/email/verify-otp
+ * Verify OTP code
+ */
+app.post("/api/email/verify-otp", async (req, res) => {
+  try {
+    const { userId, otpCode } = req.body;
+
+    if (!userId || !otpCode) {
+      return res.status(400).json({ error: "UserId and OTP code are required" });
+    }
+
+    const otpData = otpStore.get(userId);
+
+    if (!otpData) {
+      return res.status(400).json({ 
+        error: "OTP not found or expired. Please request a new code." 
+      });
+    }
+
+    // Check if expired
+    if (new Date() > otpData.expiresAt) {
+      otpStore.delete(userId);
+      return res.status(400).json({ 
+        error: "OTP code has expired. Please request a new code." 
+      });
+    }
+
+    // Check attempts (max 5 attempts)
+    if (otpData.attempts >= 5) {
+      otpStore.delete(userId);
+      return res.status(400).json({ 
+        error: "Too many failed attempts. Please request a new code." 
+      });
+    }
+
+    // Verify OTP code
+    if (otpCode !== otpData.code) {
+      otpData.attempts = (otpData.attempts || 0) + 1;
+      otpStore.set(userId, otpData);
+      return res.status(400).json({ 
+        error: "Invalid OTP code",
+        attemptsRemaining: 5 - otpData.attempts
+      });
+    }
+
+    // OTP verified successfully - mark email as verified in Firestore
+    if (db) {
+      try {
+        await db.collection("USERS").doc(userId).update({
+          emailVerified: true,
+          emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Delete OTP after successful verification
+        otpStore.delete(userId);
+
+        res.json({ 
+          success: true, 
+          message: "Email verified successfully",
+          userId: userId 
+        });
+      } catch (firestoreError) {
+        console.error("❌ Error updating Firestore:", firestoreError);
+        res.status(500).json({ 
+          error: "OTP valid but failed to update user record",
+          message: firestoreError.message 
+        });
+      }
+    } else {
+      // If Firestore is not available, just verify the OTP
+      otpStore.delete(userId);
+      res.json({ 
+        success: true, 
+        message: "OTP verified successfully (Firestore update skipped)",
+        userId: userId 
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error verifying OTP:", error);
+    res.status(500).json({ 
+      error: "Failed to verify OTP",
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/email/resend-otp
+ * Resend OTP code
+ */
+app.post("/api/email/resend-otp", async (req, res) => {
+  try {
+    const { email, userId, username } = req.body;
+
+    if (!email || !userId) {
+      return res.status(400).json({ error: "Email and userId are required" });
+    }
+
+    // Wait a bit for transporter initialization if needed
+    if (!transporterInitialized) {
+      let waited = 0;
+      while (!transporterInitialized && waited < 2000) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        waited += 100;
+      }
+    }
+
+    if (!transporter || !transporterInitialized) {
+      return res.status(500).json({ error: "Email service not configured" });
+    }
+
+    // Check if user already verified
+    if (db) {
+      try {
+        const userDoc = await db.collection("USERS").doc(userId).get();
+        if (userDoc.exists() && userDoc.data().emailVerified) {
+          return res.status(400).json({ 
+            error: "Email is already verified" 
+          });
+        }
+      } catch (firestoreError) {
+        console.warn("⚠️ Could not check verification status:", firestoreError);
+        // Continue anyway
+      }
+    }
+
+    const result = await sendOTPEmail(email, userId, username || "User");
+
+    const response = { 
+      success: true, 
+      message: "OTP code resent successfully" 
+    };
+
+    // Include preview URL and OTP code if using test email
+    if (USE_TEST_EMAIL && result) {
+      if (result.previewURL) {
+        response.previewURL = result.previewURL;
+      }
+      if (result.otpCode) {
+        response.otpCode = result.otpCode; // Only in test mode for debugging
+      }
+      response.testMode = true;
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error("❌ Error resending OTP:", error);
+    res.status(500).json({ 
+      error: "Failed to resend OTP",
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/email/verify
+ * Verify email token (legacy endpoint - keeping for backward compatibility)
+ */
+app.post("/api/email/verify", async (req, res) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ error: "Token is required" });
+    }
+
+    const verification = verifyEmailToken(token);
+
+    if (!verification.valid) {
+      return res.status(400).json({ 
+        error: verification.error || "Invalid token" 
+      });
+    }
+
+    // Mark email as verified in Firestore
+    if (db) {
+      try {
+        await db.collection("USERS").doc(verification.userId).update({
+          emailVerified: true,
+          emailVerifiedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Delete token after successful verification
+        verificationTokens.delete(token);
+
+        res.json({ 
+          success: true, 
+          message: "Email verified successfully",
+          userId: verification.userId 
+        });
+      } catch (firestoreError) {
+        console.error("❌ Error updating Firestore:", firestoreError);
+        res.status(500).json({ 
+          error: "Token valid but failed to update user record",
+          message: firestoreError.message 
+        });
+      }
+    } else {
+      // If Firestore is not available, just verify the token
+      verificationTokens.delete(token);
+      res.json({ 
+        success: true, 
+        message: "Email verified successfully (Firestore update skipped)",
+        userId: verification.userId 
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error verifying email:", error);
+    res.status(500).json({ 
+      error: "Failed to verify email",
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/email/resend-verification
+ * Resend verification email
+ */
+app.post("/api/email/resend-verification", async (req, res) => {
+  try {
+    const { email, userId, username } = req.body;
+
+    if (!email || !userId) {
+      return res.status(400).json({ error: "Email and userId are required" });
+    }
+
+    if (!transporter) {
+      return res.status(500).json({ error: "Email service not configured" });
+    }
+
+    // Check if user already verified
+    if (db) {
+      try {
+        const userDoc = await db.collection("USERS").doc(userId).get();
+        if (userDoc.exists() && userDoc.data().emailVerified) {
+          return res.status(400).json({ 
+            error: "Email is already verified" 
+          });
+        }
+      } catch (firestoreError) {
+        console.warn("⚠️ Could not check verification status:", firestoreError);
+        // Continue anyway
+      }
+    }
+
+    await sendVerificationEmail(email, userId, username || "User");
+
+    res.json({ 
+      success: true, 
+      message: "Verification email resent successfully" 
+    });
+  } catch (error) {
+    console.error("❌ Error resending verification email:", error);
+    res.status(500).json({ 
+      error: "Failed to resend verification email",
+      message: error.message 
+    });
   }
 });
 

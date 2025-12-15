@@ -28,6 +28,8 @@ import {
 } from "../utils/budgetUtils";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { checkAndCreateBudgetNotifications } from "../utils/budgetNotificationUtils";
+import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
+import { auth } from "../../firebase";
 
 /* ---------------------------
    Local helpers (month nav)
@@ -77,6 +79,8 @@ export default function BudgetAllocationScreen() {
   const [totalSpent, setTotalSpent] = useState(0);
   const [remaining, setRemaining] = useState(0);
   const [utilizationPct, setUtilizationPct] = useState(0);
+  const [currency, setCurrency] = useState<Currency>("MYR");
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Colors & icons
   const categoryConfig: Record<string, { color: string; icon: string }> = {
@@ -96,6 +100,21 @@ export default function BudgetAllocationScreen() {
     loadForMonth(monthKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthKey]);
+
+  // Get userId and subscribe to currency
+  useEffect(() => {
+    (async () => {
+      const stored = await AsyncStorage.getItem("userId");
+      const uid = stored || auth.currentUser?.uid || null;
+      if (uid) {
+        setUserId(uid);
+        if (!stored) await AsyncStorage.setItem("userId", uid);
+        subscribeUserCurrency(uid, (curr) => {
+          setCurrency(curr);
+        });
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!isEditable) return;
@@ -445,7 +464,7 @@ export default function BudgetAllocationScreen() {
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Total Amount</Text>
-                <Text style={styles.summaryValue}>RM {getTotalAllocatedAmount().toFixed(2)}</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(getTotalAllocatedAmount(), currency)}</Text>
               </View>
             </>
           )}
@@ -454,16 +473,16 @@ export default function BudgetAllocationScreen() {
             <>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Budget</Text>
-                <Text style={styles.summaryValue}>RM {Number(totalBudget || "0").toFixed(2)}</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(Number(totalBudget || "0"), currency)}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Spent</Text>
-                <Text style={styles.summaryValue}>RM {totalSpent.toFixed(2)}</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(totalSpent, currency)}</Text>
               </View>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Remaining</Text>
                 <Text style={styles.summaryValue}>
-                  RM {remaining.toFixed(2)} ({utilizationPct.toFixed(1)}% used)
+                  {formatCurrency(remaining, currency)} ({utilizationPct.toFixed(1)}% used)
                 </Text>
               </View>
             </>
@@ -529,7 +548,7 @@ export default function BudgetAllocationScreen() {
                     {mode === "plan" && !isEditing && (
                       <>
                         <Text style={styles.rowPct}>{percent.toFixed(0)}%</Text>
-                        <Text style={styles.rowAmt}>RM {amount.toFixed(0)}</Text>
+                        <Text style={styles.rowAmt}>{formatCurrency(amount, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text>
                       </>
                     )}
 
@@ -585,13 +604,13 @@ export default function BudgetAllocationScreen() {
                   <>
                     <View style={styles.spendRow}>
                       <Text style={styles.spendText}>
-                        Spent RM {Math.max(0, sp).toFixed(0)} / RM {Math.max(0, alloc).toFixed(0)}
+                        Spent {formatCurrency(Math.max(0, sp), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} / {formatCurrency(Math.max(0, alloc), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </Text>
 
                       <View style={styles.remainChip}>
                         <Ionicons name="wallet-outline" size={12} color="#1E3932" />
                         <Text style={styles.remainChipText}>
-                          Remaining RM {Math.max(0, alloc - sp).toFixed(0)}
+                          Remaining {formatCurrency(Math.max(0, alloc - sp), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </Text>
                       </View>
 

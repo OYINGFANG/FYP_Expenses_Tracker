@@ -1,5 +1,5 @@
 // app/screen/Profile.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,8 @@ import {
   doc,
   onSnapshot,
   updateDoc,
+  setDoc,
+  getDoc,
   collection,
   query,
   where,
@@ -27,7 +29,15 @@ import {
 } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { db } from "../../firebase";
+import { db, auth } from "../../firebase";
+import {
+  reauthenticateWithCredential,
+  updatePassword,
+  EmailAuthProvider,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+import { formatCurrency } from "../utils/currencyUtils";
 
 /** ---------- Types ---------- */
 type UserProfile = {
@@ -89,7 +99,7 @@ function formatTimestamp(timestamp: any): string {
       day: "numeric",
       year: "numeric",
     });
-  } catch (e) {
+  } catch {
     return "—";
   }
 }
@@ -105,7 +115,7 @@ function calculateAge(dob: any): number | null {
       age--;
     }
     return age;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -163,6 +173,621 @@ function useEditModal() {
   return { open, ModalUI };
 }
 
+/** ---------- Password Security Helpers ---------- */
+const validatePasswordStrength = (password: string): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+  
+  if (password.length < 8) {
+    errors.push("At least 8 characters");
+  }
+  if (!/[A-Z]/.test(password)) {
+    errors.push("One uppercase letter");
+  }
+  if (!/[a-z]/.test(password)) {
+    errors.push("One lowercase letter");
+  }
+  if (!/\d/.test(password)) {
+    errors.push("One number");
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+    errors.push("One special character (!@#$%^&*)");
+  }
+  
+  return { isValid: errors.length === 0, errors };
+};
+
+const getPasswordStrength = (password: string): "weak" | "medium" | "strong" => {
+  if (password.length === 0) return "weak";
+  
+  let strength = 0;
+  if (password.length >= 8) strength++;
+  if (password.length >= 12) strength++;
+  if (/[A-Z]/.test(password)) strength++;
+  if (/[a-z]/.test(password)) strength++;
+  if (/\d/.test(password)) strength++;
+  if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) strength++;
+  
+  if (strength <= 2) return "weak";
+  if (strength <= 4) return "medium";
+  return "strong";
+};
+
+/** ---------- Change Password Modal ---------- */
+function ChangePasswordModal({
+  visible,
+  onClose,
+  onSignOut,
+  userId,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSignOut?: () => void;
+  userId?: string | null;
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockUntil, setLockUntil] = useState<Date | null>(null);
+  const onCloseRef = useRef(onClose);
+  
+  // Update ref when onClose changes
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Monitor auth state changes only when modal is visible
+  // Track if user was logged in when modal opened
+  const wasLoggedInRef = useRef(auth.currentUser !== null);
+  
+  useEffect(() => {
+    if (!visible) {
+      // Reset the ref when modal closes
+      wasLoggedInRef.current = auth.currentUser !== null;
+      return;
+    }
+    
+    // Update ref when modal opens
+    wasLoggedInRef.current = auth.currentUser !== null;
+    
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      // Only close if user was logged in when modal opened AND now signed out
+      // This prevents closing on initial auth state check
+      if (!user && wasLoggedInRef.current) {
+        // User signed out while modal is open - close it
+        onCloseRef.current();
+      }
+      // Update ref for next check
+      wasLoggedInRef.current = user !== null;
+    });
+    return () => unsubscribe();
+  }, [visible]); // Only depend on visible, use ref for onClose
+
+  // Check if account is locked
+  useEffect(() => {
+    if (lockUntil) {
+      const checkLock = setInterval(() => {
+        if (new Date() >= lockUntil) {
+          setIsLocked(false);
+          setLockUntil(null);
+          setFailedAttempts(0);
+        }
+      }, 1000);
+      return () => clearInterval(checkLock);
+    }
+  }, [lockUntil]);
+
+  const handleChangePassword = async () => {
+    setError("");
+
+    // Check if account is locked
+    if (isLocked && lockUntil && new Date() < lockUntil) {
+      const minutesLeft = Math.ceil((lockUntil.getTime() - new Date().getTime()) / 60000);
+      setError(`Account temporarily locked. Try again in ${minutesLeft} minute(s).`);
+      return;
+    }
+
+    // Validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setError("Please fill in all fields");
+      return;
+    }
+
+    // Strong password validation
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.isValid) {
+      setError(`Password must contain: ${passwordValidation.errors.join(", ")}`);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match");
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setError("New password must be different from current password");
+      return;
+    }
+
+    // Check for common weak passwords
+    const commonPasswords = ["password", "12345678", "qwerty", "abc123", "password123"];
+    if (commonPasswords.some(weak => newPassword.toLowerCase().includes(weak))) {
+      setError("Password is too common. Please choose a stronger password.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Wait for auth state to be ready - check multiple times if needed
+      let user = auth.currentUser;
+      let attempts = 0;
+      while (!user && attempts < 10) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        user = auth.currentUser;
+        attempts++;
+      }
+
+      // If still no user, try to get email from Firestore
+      let emailToUse: string | null = null;
+      if (!user) {
+        if (!userId) {
+          setError("You are not logged in. Please sign in and try again.");
+          setLoading(false);
+          setTimeout(() => {
+            onClose();
+            onSignOut?.();
+          }, 2000);
+          return;
+        }
+        
+        // Try to get email from Firestore
+        try {
+          const userDoc = await getDoc(doc(db, "USERS", userId));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            emailToUse = data.user_email || null;
+          }
+        } catch (e) {
+          console.warn("Failed to get user email from Firestore:", e);
+        }
+        
+        if (!emailToUse) {
+          setError("Authentication session expired. Please sign in again to change your password.");
+          setLoading(false);
+          return;
+        }
+      } else {
+        emailToUse = user.email || null;
+      }
+
+      if (!emailToUse) {
+        setError("Your account email is not available. Please contact support.");
+        setLoading(false);
+        return;
+      }
+
+      // If we have a user from auth, use it for reauthentication and password update
+      if (user) {
+        // Reauthenticate user
+        const credential = EmailAuthProvider.credential(emailToUse, currentPassword);
+        await reauthenticateWithCredential(user, credential);
+
+        // Update password in Firebase Auth
+        await updatePassword(user, newPassword);
+      } else {
+        // If no auth user but we have userId and email, we can only update Firestore
+        // We can't update Firebase Auth without an active session
+        // Verify current password by trying to sign in
+        try {
+          const { signInWithEmailAndPassword } = await import("firebase/auth");
+          await signInWithEmailAndPassword(auth, emailToUse, currentPassword);
+          // If sign in succeeds, we now have auth.currentUser
+          user = auth.currentUser;
+          if (user) {
+            await updatePassword(user, newPassword);
+          } else {
+            throw new Error("Failed to get user after sign in");
+          }
+        } catch (signInError: any) {
+          if (signInError.code === "auth/wrong-password" || signInError.code === "auth/invalid-credential") {
+            setError("Current password is incorrect.");
+            setLoading(false);
+            setFailedAttempts((prev) => {
+              const newAttempts = prev + 1;
+              if (newAttempts >= 5) {
+                setIsLocked(true);
+                const lockTime = new Date();
+                lockTime.setMinutes(lockTime.getMinutes() + 15);
+                setLockUntil(lockTime);
+              }
+              return newAttempts;
+            });
+            return;
+          }
+          throw signInError;
+        }
+      }
+
+      // Also update password in Firestore
+      // Use userId from props (from AsyncStorage) if available, otherwise use auth.currentUser.uid
+      // After password update, user should be available
+      const firestoreUserId = userId || (user ? user.uid : null);
+      
+      if (!firestoreUserId) {
+        console.error("No user ID available for Firestore update");
+        Alert.alert(
+          "Warning",
+          "Password updated in Firebase Auth, but could not update database. Please contact support."
+        );
+        setLoading(false);
+        return;
+      }
+      try {
+        const userDocRef = doc(db, "USERS", firestoreUserId);
+        // Use setDoc with merge to ensure it works even if document structure differs
+        await setDoc(
+          userDocRef,
+          {
+            user_password: newPassword,
+            updated_at: new Date(),
+          },
+          { merge: true }
+        );
+        console.log("✅ Password updated in Firestore successfully");
+        console.log("   User ID used:", firestoreUserId);
+        console.log("   Auth UID:", user ? user.uid : "N/A");
+        console.log("   UserId prop:", userId);
+      } catch (firestoreError: any) {
+        // Log detailed error for debugging
+        console.error("❌ Failed to update password in Firestore:");
+        console.error("   Error code:", firestoreError.code);
+        console.error("   Error message:", firestoreError.message);
+        console.error("   Attempted user ID:", firestoreUserId);
+        console.error("   Auth UID:", user ? user.uid : "N/A");
+        console.error("   UserId prop:", userId);
+        // Show error to user but don't fail the password change
+        // Firebase Auth password is already updated, which is the primary source
+        Alert.alert(
+          "Password Updated",
+          "Your password has been changed in Firebase Auth, but there was an issue updating it in the database. Please contact support if this persists."
+        );
+      }
+
+      // Reset failed attempts on success
+      setFailedAttempts(0);
+      setIsLocked(false);
+      setLockUntil(null);
+
+      // Sign out user for security - require re-login with new password
+      Alert.alert(
+        "Password Changed",
+        "Your password has been changed successfully. For security, please sign in again with your new password.",
+        [
+          {
+            text: "OK",
+            onPress: async () => {
+              // Clear all stored credentials
+              await AsyncStorage.multiRemove([
+                "loggedIn",
+                "userId",
+                "userEmail",
+                "email",
+                "password",
+                "token",
+              ]);
+              // Sign out from Firebase
+              await firebaseSignOut(auth);
+              // Close modal
+              onClose();
+              // Trigger sign out navigation in parent
+              onSignOut?.();
+              // Note: Router navigation should be handled by parent component
+            },
+          },
+        ]
+      );
+
+      // Reset form
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      console.error("Password change error:", err);
+      
+      // Handle failed attempts and rate limiting
+      if (err.code === "auth/wrong-password" || err.code === "auth/invalid-credential") {
+        const newFailedAttempts = failedAttempts + 1;
+        setFailedAttempts(newFailedAttempts);
+        
+        if (newFailedAttempts >= 5) {
+          // Lock account for 15 minutes after 5 failed attempts
+          const lockTime = new Date();
+          lockTime.setMinutes(lockTime.getMinutes() + 15);
+          setIsLocked(true);
+          setLockUntil(lockTime);
+          setError("Too many failed attempts. Account locked for 15 minutes.");
+        } else {
+          setError(`Current password is incorrect. ${5 - newFailedAttempts} attempt(s) remaining.`);
+        }
+      } else if (err.code === "auth/weak-password") {
+        setError("New password is too weak. Please use a stronger password.");
+      } else if (err.code === "auth/requires-recent-login") {
+        setError("For security, please sign out and sign in again before changing your password.");
+      } else {
+        setError(err.message || "Failed to change password. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const passwordStrength = getPasswordStrength(newPassword);
+  const passwordValidation = validatePasswordStrength(newPassword);
+
+  return (
+    <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Change Password</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={8}>
+              <Ionicons name="close-circle" size={24} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Security Notice */}
+          <View style={styles.securityNotice}>
+            <Ionicons name="information-circle" size={18} color="#3B82F6" />
+            <Text style={styles.securityNoticeText}>
+              For security, you will be automatically logged out after changing your password. Please sign in again with your new password.
+            </Text>
+          </View>
+
+          {error ? (
+            <View style={styles.errorBox}>
+              <Ionicons name="alert-circle" size={16} color="#EF4444" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.passwordInputContainer}>
+            <Text style={styles.inputLabel}>Current Password</Text>
+            <View style={styles.passwordInputWrapper}>
+              <TextInput
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder="Enter current password"
+                placeholderTextColor="#9CA3AF"
+                style={styles.passwordInput}
+                secureTextEntry={!showCurrentPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                onPress={() => setShowCurrentPassword(!showCurrentPassword)}
+                style={styles.passwordToggle}
+              >
+                <Ionicons
+                  name={showCurrentPassword ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                  color="#6B7280"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.passwordInputContainer}>
+            <Text style={styles.inputLabel}>New Password</Text>
+            <View style={styles.passwordInputWrapper}>
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Enter new password"
+                placeholderTextColor="#9CA3AF"
+                style={styles.passwordInput}
+                secureTextEntry={!showNewPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                onPress={() => setShowNewPassword(!showNewPassword)}
+                style={styles.passwordToggle}
+              >
+                <Ionicons
+                  name={showNewPassword ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                  color="#6B7280"
+                />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Password Strength Indicator */}
+            {newPassword.length > 0 && (
+              <View style={styles.passwordStrengthContainer}>
+                <View style={styles.passwordStrengthBar}>
+                  <View
+                    style={[
+                      styles.passwordStrengthFill,
+                      {
+                        width: `${passwordStrength === "weak" ? 33 : passwordStrength === "medium" ? 66 : 100}%`,
+                        backgroundColor:
+                          passwordStrength === "weak"
+                            ? "#EF4444"
+                            : passwordStrength === "medium"
+                            ? "#F59E0B"
+                            : "#22C55E",
+                      },
+                    ]}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.passwordStrengthText,
+                    {
+                      color:
+                        passwordStrength === "weak"
+                          ? "#EF4444"
+                          : passwordStrength === "medium"
+                          ? "#F59E0B"
+                          : "#22C55E",
+                    },
+                  ]}
+                >
+                  {passwordStrength === "weak"
+                    ? "Weak"
+                    : passwordStrength === "medium"
+                    ? "Medium"
+                    : "Strong"}
+                </Text>
+              </View>
+            )}
+
+            {/* Password Requirements */}
+            {newPassword.length > 0 && (
+              <View style={styles.passwordRequirements}>
+                <Text style={styles.passwordRequirementsTitle}>Password must contain:</Text>
+                {passwordValidation.errors.map((req, index) => (
+                  <View key={index} style={styles.passwordRequirementItem}>
+                    <Ionicons
+                      name="close-circle"
+                      size={14}
+                      color="#EF4444"
+                      style={styles.requirementIcon}
+                    />
+                    <Text style={styles.passwordRequirementText}>{req}</Text>
+                  </View>
+                ))}
+                {passwordValidation.isValid && (
+                  <View style={styles.passwordRequirementItem}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={14}
+                      color="#22C55E"
+                      style={styles.requirementIcon}
+                    />
+                    <Text style={[styles.passwordRequirementText, { color: "#22C55E" }]}>
+                      All requirements met
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.passwordInputContainer}>
+            <Text style={styles.inputLabel}>Confirm New Password</Text>
+            <View style={styles.passwordInputWrapper}>
+              <TextInput
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Confirm new password"
+                placeholderTextColor="#9CA3AF"
+                style={styles.passwordInput}
+                secureTextEntry={!showConfirmPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                style={styles.passwordToggle}
+              >
+                <Ionicons
+                  name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                  color="#6B7280"
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.modalSaveBtn, loading && styles.modalSaveBtnDisabled]}
+            onPress={handleChangePassword}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.modalSaveBtnText}>Change Password</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+/** ---------- Change Currency Modal ---------- */
+function ChangeCurrencyModal({
+  visible,
+  onClose,
+  currentCurrency,
+  onSave,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  currentCurrency: string;
+  onSave: (currency: string) => void;
+}) {
+  const currencies = ["MYR", "USD", "SGD", "EUR", "GBP", "JPY", "CNY"];
+  const [selectedCurrency, setSelectedCurrency] = useState(currentCurrency);
+
+  const handleSave = () => {
+    onSave(selectedCurrency);
+    onClose();
+  };
+
+  return (
+    <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Change Currency</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={8}>
+              <Ionicons name="close-circle" size={24} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.modalSubtitle}>Select your preferred currency</Text>
+
+          <ScrollView style={styles.currencyList}>
+            {currencies.map((currency) => (
+              <TouchableOpacity
+                key={currency}
+                style={[
+                  styles.currencyItem,
+                  selectedCurrency === currency && styles.currencyItemSelected,
+                ]}
+                onPress={() => setSelectedCurrency(currency)}
+              >
+                <Text
+                  style={[
+                    styles.currencyText,
+                    selectedCurrency === currency && styles.currencyTextSelected,
+                  ]}
+                >
+                  {currency}
+                </Text>
+                {selectedCurrency === currency && (
+                  <Ionicons name="checkmark-circle" size={20} color="#1E3932" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSave}>
+            <Text style={styles.modalSaveBtnText}>Save Changes</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 /** ---------- Screen ---------- */
 export default function ProfileScreen() {
   const router = useRouter();
@@ -182,6 +807,8 @@ export default function ProfileScreen() {
   });
 
   const editModal = useEditModal();
+  const [changePasswordModalVisible, setChangePasswordModalVisible] = useState(false);
+  const [changeCurrencyModalVisible, setChangeCurrencyModalVisible] = useState(false);
 
   const monthBounds = useMemo(() => {
     const now = new Date();
@@ -395,7 +1022,10 @@ export default function ProfileScreen() {
 
                 <View style={styles.joinedBadge}>
                   <Ionicons name="star" size={14} color="#F59E0B" />
-                  <Text style={styles.joinedText}>Member for {memberDays} days • Since {joined}</Text>
+                  <View style={styles.joinedTextContainer}>
+                    <Text style={styles.joinedText}>Member for {memberDays} days</Text>
+                    <Text style={styles.joinedText}>• Since {joined}</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -413,9 +1043,9 @@ export default function ProfileScreen() {
                 <Ionicons name="trending-up" size={24} color="#1E3932" />
               </View>
               <Text style={styles.statLabel}>This Month</Text>
-              <Text style={styles.statValue}>RM {stats.monthSpend.toFixed(2)}</Text>
+              <Text style={styles.statValue}>{formatCurrency(stats.monthSpend, currency)}</Text>
               <Text style={styles.statSubtext}>
-                ~RM {stats.avgDailySpend.toFixed(2)}/day
+                ~{formatCurrency(stats.avgDailySpend, currency)}/day
               </Text>
             </View>
 
@@ -424,7 +1054,7 @@ export default function ProfileScreen() {
                 <Ionicons name="calendar-outline" size={24} color="#D97706" />
               </View>
               <Text style={styles.statLabel}>This Week</Text>
-              <Text style={styles.statValue}>RM {stats.weekSpend.toFixed(2)}</Text>
+              <Text style={styles.statValue}>{formatCurrency(stats.weekSpend, currency)}</Text>
               <Text style={styles.statSubtext}>{stats.totalTransactions} transactions</Text>
             </View>
           </View>
@@ -432,29 +1062,21 @@ export default function ProfileScreen() {
           {/* Secondary Stats */}
           <View style={styles.secondaryStatsRow}>
             <View style={styles.secondaryStatCard}>
-              <View style={styles.statRow}>
-                <View style={[styles.miniIconBox, { backgroundColor: "#EDE9FE" }]}>
-                  <Ionicons name="receipt" size={16} color="#8B5CF6" />
-                </View>
-                <View style={styles.statContent}>
-                  <Text style={styles.miniStatLabel}>Last Transaction</Text>
-                  <Text style={styles.miniStatValue}>
-                    {stats.lastTxAmount > 0 ? `RM ${stats.lastTxAmount.toFixed(2)}` : "—"}
-                  </Text>
-                </View>
+              <View style={[styles.statIconBox, { backgroundColor: "#EDE9FE" }]}>
+                <Ionicons name="receipt" size={24} color="#8B5CF6" />
               </View>
+              <Text style={styles.statLabel}>Last Transaction</Text>
+              <Text style={styles.statValue}>
+                {stats.lastTxAmount > 0 ? formatCurrency(stats.lastTxAmount, currency) : "—"}
+              </Text>
             </View>
 
             <View style={styles.secondaryStatCard}>
-              <View style={styles.statRow}>
-                <View style={[styles.miniIconBox, { backgroundColor: "#D1FAE5" }]}>
-                  <Ionicons name="bar-chart" size={16} color="#059669" />
-                </View>
-                <View style={styles.statContent}>
-                  <Text style={styles.miniStatLabel}>Top Category</Text>
-                  <Text style={styles.miniStatValue}>{stats.topCategory}</Text>
-                </View>
+              <View style={[styles.statIconBox, { backgroundColor: "#D1FAE5" }]}>
+                <Ionicons name="bar-chart" size={24} color="#059669" />
               </View>
+              <Text style={styles.statLabel}>Top Category</Text>
+              <Text style={styles.statValue}>{stats.topCategory}</Text>
             </View>
           </View>
         </View>
@@ -478,19 +1100,6 @@ export default function ProfileScreen() {
             />
             <Divider />
             <SettingItem
-              icon="call-outline"
-              iconBg="#FEF3C7"
-              iconColor="#D97706"
-              label="Phone Number"
-              value={profile?.phone || "Not set"}
-              onPress={() =>
-                editModal.open("Phone Number", profile?.phone || "", (v) =>
-                  updateProfile({ phone: v })
-                )
-              }
-            />
-            <Divider />
-            <SettingItem
               icon="mail-outline"
               iconBg="#E0E7FF"
               iconColor="#6366F1"
@@ -498,32 +1107,25 @@ export default function ProfileScreen() {
               value={profile?.user_email || "—"}
               disabled
             />
+            <Divider />
+            <SettingItem
+              icon="lock-closed-outline"
+              iconBg="#FEE2E2"
+              iconColor="#DC2626"
+              label="Password"
+              value="••••••••"
+              onPress={() => setChangePasswordModalVisible(true)}
+            />
+            <Divider />
+            <SettingItem
+              icon="cash-outline"
+              iconBg="#FEF3C7"
+              iconColor="#D97706"
+              label="Currency"
+              value={currency}
+              onPress={() => setChangeCurrencyModalVisible(true)}
+            />
           </View>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.actionsSection}>
-          <TouchableOpacity style={styles.actionCard}>
-            <View style={[styles.actionIconBox, { backgroundColor: "#E0E7FF" }]}>
-              <Ionicons name="settings-outline" size={22} color="#6366F1" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>App Settings</Text>
-              <Text style={styles.actionSubtext}>Manage app preferences</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.actionCard}>
-            <View style={[styles.actionIconBox, { backgroundColor: "#FEF3C7" }]}>
-              <Ionicons name="help-circle-outline" size={22} color="#D97706" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionTitle}>Help & Support</Text>
-              <Text style={styles.actionSubtext}>Get assistance</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-          </TouchableOpacity>
         </View>
 
         {/* Sign Out */}
@@ -570,6 +1172,22 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {editModal.ModalUI}
+      
+      <ChangePasswordModal
+        visible={changePasswordModalVisible}
+        onClose={() => setChangePasswordModalVisible(false)}
+        onSignOut={() => {
+          router.replace("/screen/SignIn");
+        }}
+        userId={uid}
+      />
+      
+      <ChangeCurrencyModal
+        visible={changeCurrencyModalVisible}
+        onClose={() => setChangeCurrencyModalVisible(false)}
+        currentCurrency={currency}
+        onSave={(newCurrency) => updateProfile({ currency: newCurrency })}
+      />
     </SafeAreaView>
   );
 }
@@ -765,6 +1383,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignSelf: "flex-start",
   },
+  joinedTextContainer: {
+    flexDirection: "column",
+    gap: 2,
+  },
   joinedText: {
     fontSize: 11,
     color: "#FFFFFF",
@@ -823,7 +1445,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   statValue: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "900",
     color: "#1E3932",
     marginBottom: 4,
@@ -840,11 +1462,17 @@ const styles = StyleSheet.create({
   secondaryStatCard: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 16,
+    padding: 16,
     ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
       android: {
-        elevation: 2,
+        elevation: 3,
       },
     }),
   },
@@ -854,9 +1482,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   miniIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -864,14 +1492,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   miniStatLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#6B7280",
     fontWeight: "600",
-    marginBottom: 2,
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   miniStatValue: {
-    fontSize: 14,
-    fontWeight: "800",
+    fontSize: 16,
+    fontWeight: "900",
     color: "#1E3932",
   },
 
@@ -1057,5 +1687,152 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "700",
+  },
+  modalSaveBtnDisabled: {
+    opacity: 0.6,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 16,
+  },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEE2E2",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: "#DC2626",
+    fontSize: 14,
+    fontWeight: "600",
+    flex: 1,
+  },
+  passwordInputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1E3932",
+    marginBottom: 8,
+  },
+  passwordInputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: "#1E3932",
+  },
+  passwordToggle: {
+    padding: 4,
+  },
+  currencyList: {
+    maxHeight: 300,
+    marginBottom: 16,
+  },
+  currencyItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  currencyItemSelected: {
+    backgroundColor: "#ECFDF3",
+    borderColor: "#86EFAC",
+    borderWidth: 2,
+  },
+  currencyText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1E3932",
+  },
+  currencyTextSelected: {
+    color: "#1E3932",
+    fontWeight: "800",
+  },
+  passwordStrengthContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+  },
+  passwordStrengthBar: {
+    flex: 1,
+    height: 4,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  passwordStrengthFill: {
+    height: "100%",
+    borderRadius: 2,
+  },
+  passwordStrengthText: {
+    fontSize: 12,
+    fontWeight: "700",
+    minWidth: 50,
+  },
+  passwordRequirements: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  passwordRequirementsTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1E3932",
+    marginBottom: 8,
+  },
+  passwordRequirementItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+  },
+  requirementIcon: {
+    marginRight: 6,
+  },
+  passwordRequirementText: {
+    fontSize: 11,
+    color: "#6B7280",
+    fontWeight: "600",
+  },
+  securityNotice: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#EFF6FF",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    marginBottom: 16,
+  },
+  securityNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#1E40AF",
+    lineHeight: 18,
   },
 });

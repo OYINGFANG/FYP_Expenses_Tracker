@@ -1,8 +1,8 @@
 import { Locations, ItemsInfo } from '../types';
 
 const itemsData: ItemsInfo = {
-  potat: {
-    itemId: 'potat',
+  potato: {
+    itemId: 'potato',
     volume: 2,
     weight: 2.5,
     prices: [
@@ -106,8 +106,8 @@ const itemsData: ItemsInfo = {
     ],
   },
   // Melaka
-  hotsauce: {
-    itemId: 'hotsauce',
+  mayonnaise: {
+    itemId: 'mayonnaise',
     volume: 1,
     weight: 2,
     prices: [
@@ -133,8 +133,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  saltlick: {
-    itemId: 'saltlick',
+  salt: {
+    itemId: 'salt',
     volume: 2,
     weight: 4,
     prices: [
@@ -160,8 +160,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  melakatea: {
-    itemId: 'melakatea',
+  greenTea: {
+    itemId: 'green tea',
     volume: 1,
     weight: 0.5,
     prices: [
@@ -197,8 +197,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  tunic: {
-    itemId: 'tunic',
+  sambal: {
+    itemId: 'sambal',
     volume: 3,
     weight: 1,
     prices: [
@@ -225,8 +225,8 @@ const itemsData: ItemsInfo = {
     ],
   },
   // Tabbith
-  wool: {
-    itemId: 'wool',
+  roti: {
+    itemId: 'roti',
     volume: 5,
     weight: 1,
     prices: [
@@ -279,8 +279,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  cozytea: {
-    itemId: 'cozytea',
+  matcha: {
+    itemId: 'matcha',
     volume: 1,
     weight: 0.5,
     prices: [
@@ -307,8 +307,8 @@ const itemsData: ItemsInfo = {
     ],
   },
   // Butre
-  rings: {
-    itemId: 'rings',
+  chocolate: {
+    itemId: 'chocolate',
     volume: 1,
     weight: 1,
     prices: [
@@ -334,8 +334,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  glass: {
-    itemId: 'glass',
+  cheese: {
+    itemId: 'cheese',
     volume: 2,
     weight: 8,
     prices: [
@@ -361,8 +361,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  nutmeg: {
-    itemId: 'nutmeg',
+  sugar: {
+    itemId: 'sugar',
     volume: 10,
     weight: 10,
     prices: [
@@ -399,8 +399,8 @@ const itemsData: ItemsInfo = {
     ],
   },
   // Luci
-  lamp: {
-    itemId: 'lamp',
+  flour: {
+    itemId: 'flour',
     volume: 2,
     weight: 4,
     prices: [
@@ -436,8 +436,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  melange: {
-    itemId: 'melange',
+  cabbage: {
+    itemId: 'cabbage',
     volume: 10,
     weight: 20,
     prices: [
@@ -463,8 +463,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  sporty: {
-    itemId: 'sporty',
+  cucumber: {
+    itemId: 'cucumber',
     volume: 5,
     weight: 5,
     prices: [
@@ -517,8 +517,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  jolt: {
-    itemId: 'jolt',
+  onion: {
+    itemId: 'onion',
     volume: 1,
     weight: 2,
     prices: [
@@ -545,8 +545,8 @@ const itemsData: ItemsInfo = {
     ],
   },
   // Clionne
-  cinnamonroll: {
-    itemId: 'cinnamonroll',
+  milk: {
+    itemId: 'milk',
     volume: 2,
     weight: 4,
     prices: [
@@ -582,8 +582,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  processedwool: {
-    itemId: 'processedwool',
+  salmon: {
+    itemId: 'salmon',
     volume: 3,
     weight: 5,
     prices: [
@@ -609,8 +609,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  silverspoon: {
-    itemId: 'silverspoon',
+  corn: {
+    itemId: 'corn',
     volume: 1,
     weight: 2,
     prices: [
@@ -636,8 +636,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  rug: {
-    itemId: 'rug',
+  butter: {
+    itemId: 'butter',
     volume: 5,
     weight: 5,
     prices: [
@@ -692,8 +692,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  secretspice: {
-    itemId: 'secretspice',
+  chili: {
+    itemId: 'chili',
     volume: 5,
     weight: 10,
     prices: [
@@ -766,8 +766,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  brochure: {
-    itemId: 'brochure',
+  chicken: {
+    itemId: 'chicken',
     volume: 1,
     weight: 1,
     prices: [
@@ -795,8 +795,8 @@ const itemsData: ItemsInfo = {
   },
 
   // Tiggi
-  statuette: {
-    itemId: 'statuette',
+  eggs: {
+    itemId: 'eggs',
     volume: 1,
     weight: 10,
     prices: [
@@ -822,8 +822,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  paperlantern: {
-    itemId: 'paperlantern',
+  garlic: {
+    itemId: 'garlic',
     volume: 5,
     weight: 1,
     prices: [
@@ -849,8 +849,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  silkkimono: {
-    itemId: 'silkkimono',
+  lemongrass: {
+    itemId: 'lemongrass',
     volume: 5,
     weight: 3,
     prices: [
@@ -886,8 +886,8 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  vase: {
-    itemId: 'vase',
+  banana: {
+    itemId: 'banana',
     volume: 4,
     weight: 8,
     prices: [

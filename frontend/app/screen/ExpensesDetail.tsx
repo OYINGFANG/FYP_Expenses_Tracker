@@ -23,6 +23,9 @@ import {
   type IncomeRecord,
 } from "../utils/IncomeUtils";
 import { getCurrentMonthKey } from "../utils/budgetUtils";
+import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { auth } from "../../firebase";
 
 /** ---------- Visual constants ---------- */
 const BRAND_DARK = "#020617";
@@ -93,11 +96,6 @@ const monthStartEndISO = (yyyymm: string) => {
   const end = new Date(y, (m || 1), 1);
   return { startISO: start.toISOString(), endISO: end.toISOString() };
 };
-const fmtRM = (n: number) =>
-  `RM ${Math.abs(n).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
 const isoToHeader = (iso: string) => {
   const d = new Date(iso);
   const dow = d.toLocaleDateString("en-US", { weekday: "long" });
@@ -153,11 +151,13 @@ function Row({
   onPress,
   onLongPress,
   balanceAfter,
+  currency,
 }: {
   r: ExpenseRecord;
   onPress?: () => void;
   onLongPress?: () => void;
   balanceAfter?: number;
+  currency: Currency;
 }) {
   const cat = (r.category && CATEGORY_ORDER.includes(r.category as any)
     ? (r.category as (typeof CATEGORY_ORDER)[number])
@@ -188,9 +188,9 @@ function Row({
       </View>
 
       <View style={styles.rowRight}>
-        <Text style={[styles.rowAmount, { color: RED }]}>-{fmtRM(amount)}</Text>
+        <Text style={[styles.rowAmount, { color: RED }]}>-{formatCurrency(amount, currency)}</Text>
         {typeof balanceAfter === "number" && (
-          <Text style={styles.rowBalanceText}>Balance: {fmtRM(balanceAfter)}</Text>
+          <Text style={styles.rowBalanceText}>Balance: {formatCurrency(balanceAfter, currency)}</Text>
         )}
         {Boolean((r as any).paymentMethod) && (
           <View style={styles.paymentBadge}>
@@ -242,7 +242,7 @@ function CategoryBreakdown({ expenses }: { expenses: ExpenseRecord[] }) {
               <Text style={styles.categoryName}>{item.category}</Text>
             </View>
             <View style={styles.categoryRight}>
-              <Text style={styles.categoryAmount}>{fmtRM(item.amount)}</Text>
+              <Text style={styles.categoryAmount}>{formatCurrency(item.amount, currency)}</Text>
               <Text style={styles.categoryPercent}>{item.percentage.toFixed(1)}%</Text>
             </View>
             {idx < categoryData.length - 1 && <View style={styles.categoryDivider} />}
@@ -257,9 +257,11 @@ function CategoryBreakdown({ expenses }: { expenses: ExpenseRecord[] }) {
 function SpendingInsights({
   expenses,
   monthKey,
+  currency,
 }: {
   expenses: ExpenseRecord[];
   monthKey: string;
+  currency: Currency;
 }) {
   const insights = useMemo(() => {
     if (expenses.length === 0) return null;
@@ -300,7 +302,7 @@ function SpendingInsights({
       <View style={styles.insightsGrid}>
         <View style={styles.insightItem}>
           <Text style={styles.insightLabel}>Daily Average</Text>
-          <Text style={styles.insightValue}>{fmtRM(insights.avgPerDay)}</Text>
+          <Text style={styles.insightValue}>{formatCurrency(insights.avgPerDay, currency)}</Text>
         </View>
         <View style={styles.insightItem}>
           <Text style={styles.insightLabel}>Transactions</Text>
@@ -308,7 +310,7 @@ function SpendingInsights({
         </View>
         <View style={styles.insightItem}>
           <Text style={styles.insightLabel}>Total Spent</Text>
-          <Text style={styles.insightValue}>{fmtRM(insights.total)}</Text>
+          <Text style={styles.insightValue}>{formatCurrency(insights.total, currency)}</Text>
         </View>
       </View>
 
@@ -318,7 +320,7 @@ function SpendingInsights({
             <Ionicons name="trending-up" size={16} color={RED} />
             <Text style={styles.insightHighlightText}>
               Highest spending on day {insights.highestDay.day}:{" "}
-              {fmtRM(insights.highestDay.amount)}
+              {formatCurrency(insights.highestDay.amount, currency)}
             </Text>
           </View>
         </View>
@@ -334,6 +336,8 @@ export default function ExpensesDetail() {
   const [monthKey, setMonthKey] = useState<string>(getCurrentMonthKey());
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [incomes, setIncomes] = useState<IncomeRecord[]>([]);
+  const [currency, setCurrency] = useState<Currency>("MYR");
+  const [userId, setUserId] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<"list" | "insights">("list");
   const [search, setSearch] = useState("");
@@ -345,6 +349,24 @@ export default function ExpensesDetail() {
 
   const [openModal, setOpenModal] = useState(false);
   const [selected, setSelected] = useState<ExpenseRecord | null>(null);
+
+  // Get userId and subscribe to currency
+  useEffect(() => {
+    (async () => {
+      const stored = await AsyncStorage.getItem("userId");
+      const uid = stored || auth.currentUser?.uid || null;
+      if (uid) {
+        setUserId(uid);
+        if (!stored) await AsyncStorage.setItem("userId", uid);
+        const unsubCurrency = subscribeUserCurrency(uid, (curr) => {
+          setCurrency(curr);
+        });
+        return () => {
+          if (unsubCurrency) unsubCurrency();
+        };
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     let unsubExp: (() => void) | null = null;
@@ -558,7 +580,7 @@ export default function ExpensesDetail() {
           <View style={styles.summaryHeaderRow}>
             <View>
               <Text style={styles.summaryLabel}>Total Expenses</Text>
-              <Text style={styles.summaryValue}>{fmtRM(totalExpense)}</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(totalExpense, currency)}</Text>
             </View>
             <View
               style={[
@@ -628,7 +650,7 @@ export default function ExpensesDetail() {
         {/* Mode: insights or list */}
         {viewMode === "insights" ? (
           <>
-            <SpendingInsights expenses={filteredExpenses} monthKey={monthKey} />
+            <SpendingInsights expenses={filteredExpenses} monthKey={monthKey} currency={currency} />
             <CategoryBreakdown expenses={filteredExpenses} />
           </>
         ) : (
@@ -649,13 +671,14 @@ export default function ExpensesDetail() {
                   <View style={styles.dayHeaderRow}>
                     <Text style={styles.dayHeaderText}>{g.header}</Text>
                     <View style={styles.dayTotalPill}>
-                      <Text style={styles.dayTotalText}>{fmtRM(g.dayTotal)}</Text>
+                      <Text style={styles.dayTotalText}>{formatCurrency(g.dayTotal, currency)}</Text>
                     </View>
                   </View>
                   {g.items.map((r) => (
                     <Row
                       key={r.id || r.dateISO + String(r.amount)}
                       r={r}
+                      currency={currency}
                       balanceAfter={r.id ? runningBalanceById[r.id] : undefined}
                       onPress={() => openRecord(r)}
                       onLongPress={() => openRecord(r)}
@@ -711,7 +734,7 @@ export default function ExpensesDetail() {
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Amount</Text>
                     <Text style={[styles.modalValue, { color: RED }]}>
-                      -{fmtRM(Number(selected.amount) || 0)}
+                      -{formatCurrency(Number(selected.amount) || 0, currency)}
                     </Text>
                   </View>
                   {!!(selected as any).paymentMethod && (

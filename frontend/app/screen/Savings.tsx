@@ -22,14 +22,18 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 import {
   subscribeUserSavingsGoals,
+  subscribeUserSavingsBadges,
   upsertSavingsGoal,
   addSavingsContribution,
   deleteSavingsGoalDeep,
+  BADGE_DEFINITIONS,
   type SavingsGoal,
   type SavingsContribution,
+  type SavingsBadge,
 } from "../utils/SavingsUtils";
 import { auth } from "../../firebase";
 import { syncSavingsReminderForGoal, cancelSavingsReminder } from "../utils/savingsNotificationUtils";
+import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
 
 /* ---------- Brand / UI ---------- */
 const BRAND_BG_GRADIENT = ["#1E5449", "#154C42", "#0F3D35"] as const;
@@ -42,8 +46,6 @@ const RED = "#EF4444";
 
 
 /* ---------- Helpers ---------- */
-const fmtRM = (n: number) =>
-  `RM ${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const parseNum = (s: string) => {
   const n = Number(String(s).replace(/[^\d.]/g, ""));
@@ -78,21 +80,31 @@ function GoalRow({
   onEdit,
   onDelete,
   onAddContribution,
+  currency,
 }: {
   goal: SavingsGoal;
   onEdit: () => void;
   onDelete: () => void;
   onAddContribution: () => void;
+  currency: Currency;
 }) {
   const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
+  const isCompleted = progress >= 100;
   const monthsLeft = getMonthsRemaining(goal.targetAmount, goal.currentAmount, goal.monthlyTarget || null);
   const daysOverdue = getDaysOverdue(goal.deadline || null);
+  
   return (
-    <View style={styles.goalCard}>
+    <View style={[styles.goalCard, isCompleted && styles.goalCardCompleted]}>
       {/* Header */}
       <View style={styles.goalHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.goalName}>{goal.name}</Text>
+          {isCompleted && (
+            <View style={styles.completedChip}>
+              <Ionicons name="trophy" size={12} color="#15803D" />
+              <Text style={styles.completedChipText}>Completed</Text>
+            </View>
+          )}
         </View>
         <View style={styles.goalActions}>
           <TouchableOpacity onPress={onEdit} style={styles.actionBtn}>
@@ -107,19 +119,29 @@ function GoalRow({
       {/* Progress Bar */}
       <View style={styles.progressSection}>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${Math.min(progress, 100)}%`, backgroundColor: BRAND_GREEN }]} />
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${Math.min(progress, 100)}%`,
+                backgroundColor: isCompleted ? "#16A34A" : BRAND_GREEN,
+              },
+            ]}
+          />
         </View>
         <Text style={styles.progressText}>
-          {fmtRM(goal.currentAmount)} / {fmtRM(goal.targetAmount)} ({Math.round(progress)}%)
+          {formatCurrency(goal.currentAmount, currency)} / {formatCurrency(goal.targetAmount, currency)} ({Math.round(progress)}%)
         </Text>
       </View>
 
       {/* Info Section */}
       <View style={styles.infoSection}>
         <View style={styles.infoItem}>
-          <Text style={styles.infoLabel}>Remaining</Text>
+          <Text style={styles.infoLabel}>{isCompleted ? "Extra Saved" : "Remaining"}</Text>
           <Text style={styles.infoValue}>
-            {fmtRM(Math.max(0, goal.targetAmount - goal.currentAmount))}
+            {isCompleted
+              ? formatCurrency(Math.max(0, goal.currentAmount - goal.targetAmount), currency)
+              : formatCurrency(Math.max(0, goal.targetAmount - goal.currentAmount), currency)}
           </Text>
         </View>
         {goal.monthlyTarget && goal.monthlyTarget > 0 && (
@@ -127,14 +149,20 @@ function GoalRow({
             <View style={styles.infoDivider} />
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Monthly Target</Text>
-              <Text style={styles.infoValue}>{fmtRM(goal.monthlyTarget)}</Text>
+              <Text style={styles.infoValue}>{formatCurrency(goal.monthlyTarget, currency)}</Text>
             </View>
           </>
         )}
       </View>
 
       {/* Timeline */}
-      {(monthsLeft !== null || daysOverdue !== null || goal.deadline) && (
+      {isCompleted ? (
+        <View style={styles.timelineSection}>
+          <Ionicons name="checkmark-circle" size={16} color={BRAND_GREEN} />
+          <Text style={[styles.timelineText, { color: BRAND_GREEN }]}>Goal completed 🎉</Text>
+        </View>
+      ) : (
+        (monthsLeft !== null || daysOverdue !== null || goal.deadline) && (
         <View style={styles.timelineSection}>
           {daysOverdue !== null ? (
             <>
@@ -158,13 +186,16 @@ function GoalRow({
             </>
           ) : null}
         </View>
+        )
       )}
 
       {/* Add Contribution Button */}
+      {!isCompleted && (
       <TouchableOpacity onPress={onAddContribution} style={styles.addContributionBtn}>
         <Ionicons name="add-circle" size={18} color={BRAND_DARK} />
         <Text style={styles.addContributionText}>Add Contribution</Text>
       </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -363,11 +394,13 @@ function ContributionModal({
   goal,
   onClose,
   onSave,
+  currency,
 }: {
   open: boolean;
   goal: SavingsGoal | null;
   onClose: () => void;
   onSave: (goalId: string, contribution: SavingsContribution) => void;
+  currency: Currency;
 }) {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date());
@@ -424,7 +457,7 @@ function ContributionModal({
             <View style={styles.contributionModalGoal}>
               <Text style={styles.contributionModalGoalName}>{goal.name}</Text>
               <Text style={styles.contributionModalRemaining}>
-                Remaining: {fmtRM(remaining)} / {fmtRM(goal.targetAmount)}
+                Remaining: {formatCurrency(remaining, currency)} / {formatCurrency(goal.targetAmount, currency)}
               </Text>
             </View>
 
@@ -498,18 +531,78 @@ function LabeledInput(props: React.ComponentProps<typeof TextInput> & { label: s
   );
 }
 
+/* ---------- Badge Card Component ---------- */
+function BadgeCard({ badge, earned }: { badge: Omit<SavingsBadge, "earnedAt">; earned: boolean }) {
+  return (
+    <View style={[styles.badgeCard, !earned && styles.badgeCardLocked]}>
+      <View style={[styles.badgeIconContainer, !earned && styles.badgeIconContainerLocked]}>
+        {earned ? (
+          <Ionicons name={badge.icon as any} size={32} color={BRAND_GREEN} />
+        ) : (
+          <>
+            <Ionicons name={badge.icon as any} size={32} color={MUTED} />
+            <View style={styles.badgeLockOverlay}>
+              <Ionicons name="lock-closed" size={16} color="#fff" />
+            </View>
+          </>
+        )}
+      </View>
+      <Text style={[styles.badgeTitle, !earned && styles.badgeTitleLocked]} numberOfLines={1}>
+        {badge.title}
+      </Text>
+    </View>
+  );
+}
+
+/* ---------- Achievement Modal Component ---------- */
+function AchievementModal({
+  open,
+  badge,
+  onClose,
+}: {
+  open: boolean;
+  badge: SavingsBadge | null;
+  onClose: () => void;
+}) {
+  if (!badge) return null;
+
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.achievementModalOverlay}>
+        <View style={styles.achievementModalCard}>
+          <View style={styles.achievementModalIconContainer}>
+            <Ionicons name={badge.icon as any} size={64} color={BRAND_GREEN} />
+          </View>
+          <Text style={styles.achievementModalTitle}>New Achievement!</Text>
+          <Text style={styles.achievementModalBadgeTitle}>{badge.title}</Text>
+          <Text style={styles.achievementModalDescription}>{badge.description}</Text>
+          <TouchableOpacity onPress={onClose} style={styles.achievementModalButton}>
+            <Text style={styles.achievementModalButtonText}>Got it</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 /* ---------- Main Screen ---------- */
 export default function Savings() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const [goals, setGoals] = useState<SavingsGoal[]>([]);
+  const [badges, setBadges] = useState<SavingsBadge[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<Currency>("MYR");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<SavingsGoal | null>(null);
 
   const [contributionModalOpen, setContributionModalOpen] = useState(false);
   const [contributionGoal, setContributionGoal] = useState<SavingsGoal | null>(null);
+
+  const [newBadgeModalOpen, setNewBadgeModalOpen] = useState(false);
+  const [newBadge, setNewBadge] = useState<SavingsBadge | null>(null);
+  const [showCompletedGoals, setShowCompletedGoals] = useState(true);
 
   // Resolve user id and subscribe to goals
   useEffect(() => {
@@ -519,6 +612,12 @@ export default function Savings() {
         const uid = stored || auth.currentUser?.uid || null;
         if (uid && !stored) await AsyncStorage.setItem("userId", uid);
         setUserId(uid);
+
+        // Load showCompletedGoals preference
+        const showCompleted = await AsyncStorage.getItem("showCompletedSavingsGoals");
+        if (showCompleted !== null) {
+          setShowCompletedGoals(showCompleted === "true");
+        }
 
         if (!uid) {
           setLoading(false);
@@ -530,10 +629,28 @@ export default function Savings() {
     })();
   }, []);
 
+  // Save showCompletedGoals preference when it changes
+  useEffect(() => {
+    AsyncStorage.setItem("showCompletedSavingsGoals", String(showCompletedGoals)).catch((e) => {
+      console.error("Failed to save showCompletedGoals preference", e);
+    });
+  }, [showCompletedGoals]);
+
+  // Subscribe to currency
+  useEffect(() => {
+    if (!userId) return;
+    const unsubCurrency = subscribeUserCurrency(userId, (curr) => {
+      setCurrency(curr);
+    });
+    return () => {
+      if (unsubCurrency) unsubCurrency();
+    };
+  }, [userId]);
+
   useEffect(() => {
     if (!userId) return;
 
-    const unsub = subscribeUserSavingsGoals(userId, (rows) => {
+    const unsubGoals = subscribeUserSavingsGoals(userId, (rows) => {
       setGoals(rows);
       setLoading(false);
       // Sync reminders for all goals (idempotent, so safe to call multiple times)
@@ -544,7 +661,14 @@ export default function Savings() {
       });
     });
 
-    return () => unsub?.();
+    const unsubBadges = subscribeUserSavingsBadges(userId, (badgesList) => {
+      setBadges(badgesList);
+    });
+
+    return () => {
+      unsubGoals?.();
+      unsubBadges?.();
+    };
   }, [userId]);
 
   // Derived stats
@@ -562,6 +686,52 @@ export default function Savings() {
     };
   }, [goals]);
 
+  // Split goals into active and completed, with overdue goals prioritized first
+  const activeGoals = useMemo(() => {
+    const active = goals.filter((g) => g.targetAmount > 0 && g.currentAmount < g.targetAmount);
+    
+    // Sort: overdue goals first (by most overdue), then non-overdue goals
+    return active.sort((a, b) => {
+      const aOverdue = getDaysOverdue(a.deadline || null);
+      const bOverdue = getDaysOverdue(b.deadline || null);
+      
+      // If both are overdue, sort by most overdue first (highest days overdue)
+      if (aOverdue !== null && bOverdue !== null) {
+        return bOverdue - aOverdue; // Descending: most overdue first
+      }
+      
+      // If only one is overdue, it comes first
+      if (aOverdue !== null && bOverdue === null) return -1;
+      if (aOverdue === null && bOverdue !== null) return 1;
+      
+      // If neither is overdue, maintain original order
+      return 0;
+    });
+  }, [goals]);
+
+  const completedGoals = useMemo(
+    () => goals.filter((g) => g.targetAmount > 0 && g.currentAmount >= g.targetAmount),
+    [goals]
+  );
+
+  // Sort badges: earned badges first, then unearned
+  const sortedBadges = useMemo(() => {
+    const badgeList = Object.values(BADGE_DEFINITIONS);
+    const earnedBadgeIds = new Set(badges.map((b) => b.id));
+    
+    return badgeList.sort((a, b) => {
+      const aEarned = earnedBadgeIds.has(a.id);
+      const bEarned = earnedBadgeIds.has(b.id);
+      
+      // Earned badges come first (return -1 if a is earned and b is not)
+      if (aEarned && !bEarned) return -1;
+      if (!aEarned && bEarned) return 1;
+      
+      // If both earned or both unearned, maintain original order
+      return 0;
+    });
+  }, [badges]);
+
   // Actions
   const openAdd = () => {
     setEditing(null);
@@ -576,9 +746,14 @@ export default function Savings() {
   const saveGoal = async (goal: SavingsGoal) => {
     if (!userId) return Alert.alert("Not signed in", "Please sign in first.");
     try {
-      await upsertSavingsGoal(userId, goal);
+      const newlyEarned = await upsertSavingsGoal(userId, goal);
       // Sync reminder notification for this goal
       await syncSavingsReminderForGoal(goal);
+      // Show badge modal if any new badges were earned
+      if (newlyEarned.length > 0) {
+        setNewBadge(newlyEarned[0]); // Show first badge
+        setNewBadgeModalOpen(true);
+      }
     } catch (e: any) {
       console.error(e);
       Alert.alert("Save failed", e?.message ?? "Could not save goal.");
@@ -614,13 +789,18 @@ export default function Savings() {
   const saveContribution = async (goalId: string, contribution: SavingsContribution) => {
     if (!userId) return Alert.alert("Not signed in", "Please sign in first.");
     try {
-      await addSavingsContribution(userId, goalId, {
+      const newlyEarned = await addSavingsContribution(userId, goalId, {
         amount: contribution.amount,
         date: contribution.date,
         source: contribution.source,
         note: contribution.note,
       });
-      Alert.alert("Contribution Added!", `Contribution of ${fmtRM(contribution.amount)} has been recorded.`);
+      Alert.alert("Contribution Added!", `Contribution of ${formatCurrency(contribution.amount, currency)} has been recorded.`);
+      // Show badge modal if any new badges were earned
+      if (newlyEarned.length > 0) {
+        setNewBadge(newlyEarned[0]); // Show first badge
+        setNewBadgeModalOpen(true);
+      }
     } catch (e: any) {
       console.error(e);
       Alert.alert("Contribution failed", e?.message ?? "Could not record contribution.");
@@ -668,12 +848,12 @@ export default function Savings() {
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>Saved</Text>
-              <Text style={[styles.summaryValue, { color: BRAND_GREEN }]}>{fmtRM(stats.totalCurrent)}</Text>
+              <Text style={[styles.summaryValue, { color: BRAND_GREEN }]}>{formatCurrency(stats.totalCurrent, currency)}</Text>
             </View>
             <View style={styles.summaryDivider} />
             <View style={styles.summaryItem}>
               <Text style={styles.summaryLabel}>Target</Text>
-              <Text style={styles.summaryValue}>{fmtRM(stats.totalTarget)}</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(stats.totalTarget, currency)}</Text>
             </View>
           </View>
 
@@ -688,38 +868,83 @@ export default function Savings() {
                 />
               </View>
               <Text style={styles.summaryProgressText}>
-                {Math.round(stats.overallProgress)}% complete • {fmtRM(stats.totalRemaining)} remaining
+                {Math.round(stats.overallProgress)}% complete • {formatCurrency(stats.totalRemaining, currency)} remaining
               </Text>
             </>
           )}
         </View>
 
-        {/* Goals List */}
+        {/* Achievements Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Goals ({goals.length})</Text>
+            <Text style={styles.sectionTitle}>Achievements</Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.badgesContainer}
+          >
+            {sortedBadges.map((badgeDef) => {
+              const earned = badges.some((b) => b.id === badgeDef.id);
+              return <BadgeCard key={badgeDef.id} badge={badgeDef} earned={earned} />;
+            })}
+          </ScrollView>
           </View>
 
-          {goals.length === 0 ? (
+        {/* Active Goals List */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Active Goals ({activeGoals.length})</Text>
+          </View>
+
+          {activeGoals.length === 0 ? (
             <View style={styles.card}>
               <View style={styles.empty}>
                 <Ionicons name="trophy-outline" size={56} color={BRAND_GREEN} />
-                <Text style={styles.emptyTitle}>No savings goals yet</Text>
+                <Text style={styles.emptyTitle}>No active savings goals</Text>
                 <Text style={styles.emptyText}>Tap the + button to create your first savings goal</Text>
               </View>
             </View>
           ) : (
-            goals.map((goal) => (
+            activeGoals.map((goal) => (
               <GoalRow
                 key={goal.id}
                 goal={goal}
                 onEdit={() => openEdit(goal)}
                 onDelete={() => deleteGoal(goal.id)}
                 onAddContribution={() => openContributionModal(goal)}
+                currency={currency}
               />
             ))
           )}
         </View>
+
+        {/* Completed Goals List */}
+        {completedGoals.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Completed Goals ({completedGoals.length})</Text>
+              <TouchableOpacity
+                onPress={() => setShowCompletedGoals(!showCompletedGoals)}
+                style={styles.toggleButton}
+              >
+                <Text style={styles.toggleButtonText}>{showCompletedGoals ? "Hide" : "Show"}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {showCompletedGoals &&
+              completedGoals.map((goal) => (
+                <GoalRow
+                  key={goal.id}
+                  goal={goal}
+                  onEdit={() => openEdit(goal)}
+                  onDelete={() => deleteGoal(goal.id)}
+                  onAddContribution={() => {}} // No-op since button is hidden for completed goals
+                  currency={currency}
+                />
+              ))}
+          </View>
+        )}
       </ScrollView>
 
       <GoalEditor
@@ -734,8 +959,17 @@ export default function Savings() {
         goal={contributionGoal}
         onClose={() => setContributionModalOpen(false)}
         onSave={saveContribution}
+        currency={currency}
       />
 
+      <AchievementModal
+        open={newBadgeModalOpen}
+        badge={newBadge}
+        onClose={() => {
+          setNewBadgeModalOpen(false);
+          setNewBadge(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -776,11 +1010,24 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingHorizontal: 16,
     marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   sectionTitle: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "800",
+  },
+  toggleButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  toggleButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+    opacity: 0.9,
   },
 
   summaryHeader: {
@@ -846,6 +1093,11 @@ const styles = StyleSheet.create({
     padding: 14,
     ...shadow(2, 0.06),
   },
+  goalCardCompleted: {
+    backgroundColor: "#ECFDF3",
+    borderWidth: 1,
+    borderColor: "#86EFAC",
+  },
   goalHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -863,6 +1115,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "900",
     color: BRAND_DARK,
+  },
+  completedChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    marginTop: 6,
+    backgroundColor: "#D1FAE5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  completedChipText: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#15803D",
   },
   goalActions: {
     flexDirection: "row",
@@ -1079,6 +1347,117 @@ const styles = StyleSheet.create({
     color: "#E5E7EB",
     fontSize: 14,
     fontWeight: "600",
+  },
+
+  badgesContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 12,
+  },
+  badgeCard: {
+    width: 100,
+    alignItems: "center",
+    backgroundColor: CARD_BG,
+    borderRadius: 16,
+    padding: 12,
+    marginRight: 8,
+    ...shadow(2, 0.06),
+  },
+  badgeCardLocked: {
+    opacity: 0.5,
+  },
+  badgeIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+    position: "relative",
+  },
+  badgeIconContainerLocked: {
+    backgroundColor: "#F3F4F6",
+  },
+  badgeLockOverlay: {
+    position: "absolute",
+    bottom: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: BRAND_DARK,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadow(2, 0.2),
+  },
+  badgeTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: BRAND_DARK,
+    textAlign: "center",
+  },
+  badgeTitleLocked: {
+    color: MUTED,
+  },
+
+  achievementModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  achievementModalCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 24,
+    padding: 24,
+    width: "100%",
+    maxWidth: 320,
+    alignItems: "center",
+    ...shadow(8, 0.2),
+  },
+  achievementModalIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  achievementModalTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: BRAND_DARK,
+    marginBottom: 8,
+  },
+  achievementModalBadgeTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: BRAND_GREEN,
+    marginBottom: 8,
+  },
+  achievementModalDescription: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: MUTED,
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  achievementModalButton: {
+    backgroundColor: BRAND_DARK,
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    width: "100%",
+    alignItems: "center",
+  },
+  achievementModalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "900",
   },
 });
 

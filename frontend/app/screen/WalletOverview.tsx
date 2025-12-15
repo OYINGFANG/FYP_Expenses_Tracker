@@ -31,6 +31,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { subscribeUserDebts, type Debt } from "../utils/DebtUtils";
 import { Alert, ActivityIndicator } from "react-native";
 import type { MonthlySnapshot } from "../utils/financeTypes";
+import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -242,9 +243,11 @@ function LabeledPieChart({ data, size = 240 }: { data: Slice[]; size?: number })
 function EnhancedCard({
   data,
   onPress,
+  currency,
 }: {
   data: CardData;
   onPress?: () => void;
+  currency: Currency;
 }) {
   const isExpense = data.type === "expense";
   const trendUp = data.trend > 0;
@@ -278,8 +281,7 @@ function EnhancedCard({
 
         {/* Amount */}
         <View style={styles.amountSection}>
-          <Text style={styles.currency}>RM</Text>
-          <Text style={styles.amount}>{Math.round(data.amount).toLocaleString()}</Text>
+          <Text style={styles.amount}>{formatCurrency(Math.round(data.amount), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text>
         </View>
 
         {/* Stats Grid */}
@@ -290,7 +292,7 @@ function EnhancedCard({
             </View>
             <View style={styles.statContent}>
               <Text style={styles.statLabel}>Daily Avg</Text>
-              <Text style={styles.statValue}>RM {Math.round(data.dailyAverage)}</Text>
+              <Text style={styles.statValue}>{formatCurrency(Math.round(data.dailyAverage), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text>
             </View>
           </View>
 
@@ -329,6 +331,7 @@ export default function Stats() {
   const [aiInsights, setAiInsights] = useState<string | null>(null);
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<Currency>("MYR");
 
   // Animation
   const topCardAnim = useRef(new Animated.Value(0)).current;
@@ -359,7 +362,12 @@ export default function Stats() {
       // Subscribe to debts and savings if userId is available
       const stored = await AsyncStorage.getItem("userId");
       if (stored) {
+        setUserId(stored);
         unsubDebt = subscribeUserDebts(stored, setDebts, console.error);
+        // Subscribe to currency
+        subscribeUserCurrency(stored, (curr) => {
+          setCurrency(curr);
+        });
       }
     })();
     return () => {
@@ -387,8 +395,9 @@ export default function Stats() {
         }
       }
       return snapshot;
-    } catch (error) {
-      console.error("Failed to load monthly snapshot from backend:", error);
+    } catch (error: any) {
+      // Error is already handled gracefully in fetchMonthlySnapshot (returns null)
+      // Just ensure state is cleared if needed
       setBackendSnapshot(null);
       return null;
     }
@@ -551,13 +560,23 @@ export default function Stats() {
       }
 
       const response = await getMonthlyInsights(userId, monthKey, snapshot);
-      setAiInsights(response.insights);
+      if (response) {
+        setAiInsights(response.insights);
+      } else {
+        // Backend unavailable - handle gracefully without showing error
+        setAiInsights(null);
+        console.warn("Monthly insights unavailable - backend server not reachable");
+      }
     } catch (error: any) {
       console.error("AI Analysis error:", error);
-      Alert.alert(
-        "Analysis Failed",
-        error.message || "Could not generate insights. Please check your connection and try again."
-      );
+      setAiInsights(null);
+      // Only show alert for unexpected errors, not for backend unavailability
+      if (!error.message?.includes('timeout') && !error.message?.includes('ECONNREFUSED')) {
+        Alert.alert(
+          "Analysis Failed",
+          error.message || "Could not generate insights. Please check your connection and try again."
+        );
+      }
     } finally {
       setLoadingInsights(false);
     }
@@ -592,6 +611,7 @@ export default function Stats() {
           >
             <EnhancedCard
               data={topCard}
+              currency={currency}
               onPress={() =>
                 router.push(
                   topCard.type === "expense"
@@ -612,6 +632,7 @@ export default function Stats() {
           >
             <EnhancedCard
               data={bottomCard}
+              currency={currency}
               onPress={() =>
                 router.push(
                   topCard.type === "income"
@@ -675,7 +696,7 @@ export default function Stats() {
           <View style={styles.chartWrapper}>
             <LabeledPieChart data={currentData.slices} size={240} />
             <View style={styles.chartCenter}>
-              <Text style={styles.chartAmount}>RM {Math.round(currentData.total).toLocaleString()}</Text>
+              <Text style={styles.chartAmount}>{formatCurrency(Math.round(currentData.total), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text>
               <Text style={styles.chartLabel}>{currentData.transactions} txns</Text>
             </View>
           </View>
@@ -700,7 +721,7 @@ export default function Stats() {
                     <Text style={styles.categoryName}>{cat.name}</Text>
                   </View>
                   <View style={styles.categoryRight}>
-                    <Text style={styles.categoryAmount}>RM {Math.round(cat.amount).toLocaleString()}</Text>
+                    <Text style={styles.categoryAmount}>{formatCurrency(Math.round(cat.amount), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text>
                     <Text style={[styles.categoryPct, { color: cat.color }]}>{cat.pct}%</Text>
                   </View>
                 </View>

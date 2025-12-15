@@ -13,7 +13,9 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   Keyboard,
+  TextStyle,
 } from "react-native";
+import Markdown, { MarkdownIt } from "react-native-markdown-display";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getUsernameFromFirestore } from "../utils/UserUtils";
@@ -25,6 +27,9 @@ const recordingOptions: Audio.RecordingOptions = Platform.select({
 }) as Audio.RecordingOptions;
 
 const isDevClient = process.env.EXPO_PUBLIC_ENV !== "production";
+
+// Initialize markdown parser
+const markdownIt = MarkdownIt({ typographer: true });
 
 type Message = 
   | { 
@@ -42,11 +47,11 @@ type Message =
     };
 
 // const YOUR_COMPUTER_IP = "172.20.10.9";
-const YOUR_COMPUTER_IP = "192.168.0.97";
+const YOUR_COMPUTER_IP = "192.168.100.100";
 
 // For Android emulator, use 10.0.2.2. For real device or iOS, use your computer's IP
 const BASE_URL = Platform.OS === "android"
-  ? `http://${YOUR_COMPUTER_IP}:3000` 
+  ? "http://192.168.0.96:3000"
   : `http://${YOUR_COMPUTER_IP}:3000`;
 
 
@@ -410,7 +415,12 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
               return (
                 <View key={msg.id} style={[styles.bubble, styles.bubbleBlue, styles.transactionCard]}>
                   <Text style={styles.botLabel}>🤖</Text>
-                  <Text style={styles.bubbleText}>{transactionMessage}</Text>
+                  <Markdown
+                    markdownit={markdownIt}
+                    style={markdownBotStyles}
+                  >
+                    {transactionMessage}
+                  </Markdown>
                   
                   <View style={styles.transactionDetails}>
                     <View style={styles.transactionRow}>
@@ -487,14 +497,23 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
                 ]}
               >
                 {msg.type === "bot" && <Text style={styles.botLabel}>🤖</Text>}
-                <Text 
-                  style={[
-                    styles.bubbleText, 
-                    msg.type === "user" && { color: "#fff" }
-                  ]}
-                >
-                  {msg.text}
-                </Text>
+                {msg.type === "bot" ? (
+                  <Markdown
+                    markdownit={markdownIt}
+                    style={markdownBotStyles}
+                  >
+                    {msg.text}
+                  </Markdown>
+                ) : (
+                  <Text 
+                    style={[
+                      styles.bubbleText, 
+                      { color: "#fff" }
+                    ]}
+                  >
+                    {msg.text}
+                  </Text>
+                )}
                 <View style={styles.messageFooter}>
                   {msg.time && (
                     <Text style={[
@@ -697,3 +716,79 @@ const styles = StyleSheet.create({
     color: "#000",
   },
 });
+
+// Markdown styles for bot messages
+const markdownBotStyles: Record<string, TextStyle> = {
+  body: {
+    color: "#000",
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  paragraph: {
+    marginBottom: 6,
+    marginTop: 0,
+  },
+  strong: {
+    fontWeight: "700",
+    color: "#000",
+  },
+  em: {
+    fontStyle: "italic",
+    color: "#000",
+  },
+  heading1: {
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 8,
+    marginTop: 4,
+    color: "#000",
+  },
+  heading2: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginVertical: 6,
+    color: "#000",
+  },
+  heading3: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginVertical: 4,
+    color: "#000",
+  },
+  bullet_list: {
+    marginVertical: 4,
+  },
+  ordered_list: {
+    marginVertical: 4,
+  },
+  list_item: {
+    marginVertical: 2,
+  },
+  code_inline: {
+    backgroundColor: "rgba(0,0,0,0.1)",
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    fontSize: 14,
+  },
+  code_block: {
+    backgroundColor: "rgba(0,0,0,0.1)",
+    borderRadius: 8,
+    padding: 10,
+    marginVertical: 6,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    fontSize: 14,
+  },
+  link: {
+    color: "#115D59",
+    textDecorationLine: "underline",
+  },
+  blockquote: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#115D59",
+    paddingLeft: 10,
+    marginVertical: 6,
+    fontStyle: "italic",
+  },
+};

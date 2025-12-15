@@ -25,8 +25,6 @@ import {
   type IncomeRecord,
 } from "../utils/IncomeUtils";
 import { getCurrentMonthKey } from "../utils/budgetUtils";
-
-// 🔥 Firestore store (make sure you created app/utils/DebtUtils.ts)
 import {
   subscribeUserDebts,
   upsertDebt,
@@ -40,9 +38,8 @@ import {
   syncDebtReminderForDebt,
   cancelDebtReminder,
 } from "../utils/debtNotificationUtils";
-
-// If you use Firebase Auth, import your initialized auth
 import { auth } from "../../firebase";
+import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
 
 /* ---------- Brand / UI ---------- */
 const BRAND_BG_GRADIENT = ["#1E5449", "#154C42", "#0F3D35"] as const;
@@ -78,8 +75,6 @@ const TYPE_COLORS: Record<DebtType, string> = {
 
 /* ---------- Helpers ---------- */
 const clamp = (n: number, min = 0, max = 100) => Math.max(min, Math.min(max, n));
-const fmtRM = (n: number) =>
-  `RM ${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const parseNum = (s: string) => {
   const n = Number(String(s).replace(/[^\d.]/g, ""));
@@ -181,12 +176,14 @@ function DebtRow({
   onDelete,
   onAddPayment,
   currentMonthKey,
+  currency,
 }: {
   d: Debt;
   onEdit: () => void;
   onDelete: () => void;
   onAddPayment: () => void;
   currentMonthKey: string;
+  currency: Currency;
 }) {
   const color = TYPE_COLORS[d.type];
   const progress = d.originalAmount > 0 ? ((d.originalAmount - d.currentBalance) / d.originalAmount) * 100 : 0;
@@ -226,12 +223,12 @@ function DebtRow({
       <View style={styles.balanceSection}>
         <View style={styles.balanceItem}>
           <Text style={styles.balanceLabel}>Current Balance</Text>
-          <Text style={[styles.balanceValue, { color }]}>{fmtRM(d.currentBalance)}</Text>
+          <Text style={[styles.balanceValue, { color }]}>{formatCurrency(d.currentBalance, currency)}</Text>
         </View>
         <View style={styles.balanceDivider} />
         <View style={styles.balanceItem}>
           <Text style={styles.balanceLabel}>Monthly Payment</Text>
-          <Text style={styles.balanceValue}>{fmtRM(d.monthlyPayment)}</Text>
+          <Text style={styles.balanceValue}>{formatCurrency(d.monthlyPayment, currency)}</Text>
         </View>
       </View>
 
@@ -248,7 +245,7 @@ function DebtRow({
                 <Text style={styles.paymentStatusTitle}>Paid this month ✓</Text>
                 {paymentStatus.amount && (
                   <Text style={styles.paymentStatusSubtext}>
-                    {fmtRM(paymentStatus.amount)} on {paymentStatus.paymentDate ? formatDate(paymentStatus.paymentDate) : ""}
+                    {formatCurrency(paymentStatus.amount, currency)} on {paymentStatus.paymentDate ? formatDate(paymentStatus.paymentDate) : ""}
                   </Text>
                 )}
               </View>
@@ -259,7 +256,7 @@ function DebtRow({
               <View style={{ flex: 1 }}>
                 <Text style={styles.paymentStatusTitle}>Not paid this month</Text>
                 <Text style={styles.paymentStatusSubtext}>
-                  Monthly payment: {fmtRM(d.monthlyPayment)}
+                  Monthly payment: {formatCurrency(d.monthlyPayment, currency)}
                 </Text>
               </View>
             </>
@@ -302,7 +299,7 @@ function DebtRow({
             <View key={p.id} style={styles.paymentRow}>
               <Ionicons name="checkmark-circle" size={14} color={BRAND_GREEN} />
               <Text style={styles.paymentDate}>{formatDate(p.dateISO)}</Text>
-              <Text style={styles.paymentAmount}>{fmtRM(p.amount)}</Text>
+              <Text style={styles.paymentAmount}>{formatCurrency(p.amount, currency)}</Text>
             </View>
           ))}
           {d.payments.length > 3 && (
@@ -625,7 +622,7 @@ function PaymentModal({
           <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
             <View style={styles.paymentModalDebt}>
               <Text style={styles.paymentModalDebtName}>{debt.name || debt.type}</Text>
-              <Text style={styles.paymentModalBalance}>Balance: {fmtRM(debt.currentBalance)}</Text>
+              <Text style={styles.paymentModalBalance}>Balance: {formatCurrency(debt.currentBalance, currency)}</Text>
             </View>
 
             <LabeledInput 
@@ -715,6 +712,7 @@ export default function Debt() {
   const [paymentDebt, setPaymentDebt] = useState<Debt | null>(null);
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<Currency>("MYR");
 
   const [showBreakdown, setShowBreakdown] = useState(false);
 
@@ -742,6 +740,17 @@ export default function Debt() {
       }
     })();
   }, []);
+
+  // Subscribe to currency
+  useEffect(() => {
+    if (!userId) return;
+    const unsubCurrency = subscribeUserCurrency(userId, (curr) => {
+      setCurrency(curr);
+    });
+    return () => {
+      if (unsubCurrency) unsubCurrency();
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
@@ -893,7 +902,7 @@ export default function Debt() {
           dateISO: payment.dateISO,
           note: payment.note,
         });
-        Alert.alert("Payment Recorded!", `Payment of ${fmtRM(payment.amount)} has been recorded.`);
+        Alert.alert("Payment Recorded!", `Payment of ${formatCurrency(payment.amount, currency)} has been recorded.`);
       } catch (e: any) {
         console.error(e);
         Alert.alert("Payment failed", e?.message ?? "Could not record payment.");
@@ -984,19 +993,19 @@ export default function Debt() {
             <MetricCard
               icon="wallet"
               label="Total Debt"
-              value={fmtRM(totals.totalBalance)}
+              value={formatCurrency(totals.totalBalance, currency)}
               color={RED}
             />
             <MetricCard
               icon="trending-up"
               label="Total Paid"
-              value={fmtRM(totals.totalPaid)}
+              value={formatCurrency(totals.totalPaid, currency)}
               color={BRAND_GREEN}
             />
             <MetricCard
               icon="calendar"
               label="Monthly Payment"
-              value={fmtRM(totals.totalMonthly)}
+              value={formatCurrency(totals.totalMonthly, currency)}
               color={BLUE}
             />
             <MetricCard
@@ -1122,7 +1131,7 @@ export default function Debt() {
             </View>
             <View style={styles.priorityCard}>
               <Text style={styles.priorityName}>{totals.priorityDebt.name || totals.priorityDebt.type}</Text>
-              <Text style={styles.priorityBalance}>{fmtRM(totals.priorityDebt.currentBalance)}</Text>
+              <Text style={styles.priorityBalance}>{formatCurrency(totals.priorityDebt.currentBalance, currency)}</Text>
               <Text style={styles.priorityHint}>Highest balance • Focus here first</Text>
             </View>
           </View>
@@ -1216,6 +1225,7 @@ export default function Debt() {
                 onDelete={() => deleteDebt(d.id)}
                 onAddPayment={() => openPaymentModal(d)}
                 currentMonthKey={monthKey}
+                currency={currency}
               />
             ))
           )}

@@ -25,6 +25,10 @@ import { subscribeUserDebts } from "../utils/DebtUtils";
 import { getNotifications } from "../utils/notificationStore";
 import { useFocusEffect } from "expo-router";
 import { checkAndCreateBudgetNotifications } from "../utils/budgetNotificationUtils";
+import { subscribeUserCurrency, formatCurrency, getCurrencySymbol, type Currency } from "../utils/currencyUtils";
+import { checkOnboardingStatus } from "../utils/onboardingUtils";
+import { useOnboarding } from "../context/OnboardingContext";
+import InteractiveTutorial from "../component/InteractiveTutorial";
 
 // =================== OCR helpers ===================
 const OCR_SERVER_URL = `${CHAT_SERVER_URL}/ocr/receipt`;
@@ -160,6 +164,59 @@ export default function Home() {
   const [debts, setDebts] = useState<Debt[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [currency, setCurrency] = useState<Currency>("MYR");
+  
+  // Onboarding
+  const {
+    isOnboardingActive,
+    currentStep,
+    steps,
+    nextStep,
+    skipOnboarding,
+    completeOnboarding,
+    setHighlightPosition,
+    highlightPosition,
+    showCurrencyModal,
+    handleCurrencySelected,
+    checkOnboardingStatus,
+  } = useOnboarding();
+  
+  // Check onboarding status when Home screen loads
+  useEffect(() => {
+    if (userId) {
+      // Small delay to ensure context is ready
+      const timer = setTimeout(() => {
+        checkOnboardingStatus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [userId, checkOnboardingStatus]);
+
+  // Detect when user returns from AddRecord screen and advance tutorial
+  useFocusEffect(
+    useCallback(() => {
+      const checkStepCompletion = async () => {
+        if (isOnboardingActive && currentStep === 1) {
+          const step1Completed = await AsyncStorage.getItem("onboardingStep1Completed");
+          if (step1Completed === "true") {
+            console.log("User returned from AddRecord, advancing to Step 3 (view_wallet)");
+            await AsyncStorage.removeItem("onboardingStep1Completed");
+            // Small delay to ensure screen is fully loaded
+            setTimeout(() => {
+              nextStep();
+            }, 500);
+          }
+        }
+      };
+      
+      checkStepCompletion();
+    }, [isOnboardingActive, currentStep, nextStep])
+  );
+  
+  const addButtonRef = React.useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const scrollViewRef = React.useRef<ScrollView>(null);
+  const [addButtonLayout, setAddButtonLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [scrollY, setScrollY] = useState(0);
 
   // Load user data
   useEffect(() => {
@@ -275,6 +332,19 @@ useEffect(() => {
     (rows) => setDebts(rows as Debt[]),
     (err) => console.error("Home subscribeUserDebts error:", err)
   );
+
+  return () => {
+    if (unsub) unsub();
+  };
+}, [userId]);
+
+// Subscribe to user's currency preference
+useEffect(() => {
+  if (!userId) return;
+
+  const unsub = subscribeUserCurrency(userId, (curr) => {
+    setCurrency(curr);
+  });
 
   return () => {
     if (unsub) unsub();
@@ -814,7 +884,7 @@ const debtHealth = useMemo(() => {
                 <Text style={styles.totalBalanceLabel}>Total Balance</Text>
                 <View style={styles.balanceRow}>
                   <Text style={styles.totalBalanceValue}>
-                    {isVisible ? `RM ${total.toLocaleString()}` : "RM *****"}
+                    {isVisible ? formatCurrency(total, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : `${getCurrencySymbol(currency)} *****`}
                   </Text>
                   <TouchableOpacity onPress={() => setIsVisible(!isVisible)}>
                     <Ionicons
@@ -857,7 +927,7 @@ const debtHealth = useMemo(() => {
                       <Ionicons name="arrow-down" size={20} color="#10B981" />
                       <Text style={styles.incomeLabel}>Monthly Income</Text>
                     </View>
-                    <Text style={styles.incomeValue}>RM {income.toLocaleString()}</Text>
+                    <Text style={styles.incomeValue}>{formatCurrency(income, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text>
                   </View>
 
                   <View style={styles.expenseBox}>
@@ -865,14 +935,42 @@ const debtHealth = useMemo(() => {
                       <Ionicons name="arrow-up" size={20} color="#EF4444" />
                       <Text style={styles.incomeLabel}>Monthly Expenses</Text>
                     </View>
-                    <Text style={styles.incomeValue}>RM {expense.toLocaleString()}</Text>
+                    <Text style={styles.incomeValue}>{formatCurrency(expense, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text>
                   </View>
                 </View>
               </View>
 
               {/* Action Buttons */}
               <View style={styles.actionRow}>
-                <TouchableOpacity style={[styles.actionBox, { backgroundColor: "#D9F7BE" }]} onPress={() => router.push("/screen/AddRecord")}>
+                <TouchableOpacity
+                  ref={addButtonRef}
+                  style={[
+                    styles.actionBox,
+                    { backgroundColor: "#D9F7BE" },
+                    isOnboardingActive && currentStep === 1 && { zIndex: 1000, elevation: 1000 }
+                  ]}
+                  onPress={() => {
+                    console.log("Add button pressed, onboarding active:", isOnboardingActive, "step:", currentStep);
+                    if (isOnboardingActive && currentStep === 1) {
+                      // Mark that user is completing step 1, will advance when they return
+                      AsyncStorage.setItem("onboardingStep1Completed", "true");
+                    }
+                    router.push("/screen/AddRecord");
+                  }}
+                  onLayout={(event) => {
+                    const { x, y, width, height } = event.nativeEvent.layout;
+                    // Get absolute position relative to window
+                    addButtonRef.current?.measureInWindow((px: number, py: number, fwidth: number, fheight: number) => {
+                      console.log("Add button layout:", { x: px, y: py, width: fwidth, height: fheight });
+                      setAddButtonLayout({ 
+                        x: px, 
+                        y: py, 
+                        width: fwidth, 
+                        height: fheight 
+                      });
+                    });
+                  }}
+                >
                   <Ionicons name="add" size={28} color="#1E3932" />
                   <Text style={styles.actionText}>Add</Text>
                 </TouchableOpacity>
@@ -939,7 +1037,7 @@ const debtHealth = useMemo(() => {
                   {Math.min(100, Math.max(0, budgetUsedPct)).toFixed(0)}%
                 </Text>
                 <Text style={styles.statSubtext2}>
-                  RM {budgetSpent.toLocaleString()} / {budgetTotal.toLocaleString()}
+                  {formatCurrency(budgetSpent, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} / {formatCurrency(budgetTotal, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </Text>
 
                 {/* tiny progress bar */}
@@ -1050,6 +1148,24 @@ const debtHealth = useMemo(() => {
       )}
 
       <BottomNav />
+
+      {/* Interactive Tutorial Overlay */}
+      <InteractiveTutorial
+        visible={isOnboardingActive && !showCurrencyModal}
+        currentStep={currentStep}
+        steps={steps}
+        onNext={nextStep}
+        onSkip={skipOnboarding}
+        onComplete={completeOnboarding}
+        highlightPosition={
+          currentStep === 1 && addButtonLayout // Step 2 is "add_expense" (displayed as "2 / 6")
+            ? {
+                ...addButtonLayout,
+                y: addButtonLayout.y + 50, // Offset down by 30px to move highlight lower
+              }
+            : highlightPosition || undefined
+        }
+      />
     </SafeAreaView>
   );
 }

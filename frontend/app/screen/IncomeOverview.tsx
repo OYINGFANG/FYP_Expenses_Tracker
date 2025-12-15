@@ -20,6 +20,9 @@ import {
   type IncomeRecord,
 } from "../utils/IncomeUtils";
 import { getCurrentMonthKey } from "../utils/budgetUtils";
+import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { auth } from "../../firebase";
 
 /** ---------- Visual constants ---------- */
 const BRAND_DARK = "#020617";
@@ -60,11 +63,6 @@ const INCOME_CATEGORY_ICONS: Record<(typeof INCOME_CATEGORY_ORDER)[number], any>
 const METHODS = ["All", "Cash", "Card", "Wallet", "Bank"] as const;
 
 /** ---------- Helpers ---------- */
-const fmtRM = (n: number) =>
-  `RM ${Math.abs(n).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
 
 const monthKeyToLabel = (key: string) => {
   const [y, m] = key.split("-").map(Number);
@@ -126,11 +124,13 @@ function IncomeRow({
   onPress,
   onLongPress,
   balanceAfter,
+  currency,
 }: {
   r: IncomeRecord;
   onPress?: () => void;
   onLongPress?: () => void;
   balanceAfter?: number;
+  currency: Currency;
 }) {
   const cat = (r.category && INCOME_CATEGORY_ORDER.includes(r.category as any)
     ? (r.category as (typeof INCOME_CATEGORY_ORDER)[number])
@@ -161,9 +161,9 @@ function IncomeRow({
       </View>
 
       <View style={styles.rowRight}>
-        <Text style={[styles.rowAmount, { color: BRAND_GREEN }]}>+{fmtRM(amount)}</Text>
+        <Text style={[styles.rowAmount, { color: BRAND_GREEN }]}>+{formatCurrency(amount, currency)}</Text>
         {typeof balanceAfter === "number" && (
-          <Text style={styles.rowBalanceText}>Balance: {fmtRM(balanceAfter)}</Text>
+          <Text style={styles.rowBalanceText}>Balance: {formatCurrency(balanceAfter, currency)}</Text>
         )}
         {Boolean(r.paymentMethod) && (
           <View style={styles.paymentBadge}>
@@ -181,6 +181,8 @@ export default function IncomeOverview() {
 
   const [monthKey, setMonthKey] = useState<string>(getCurrentMonthKey());
   const [incomes, setIncomes] = useState<IncomeRecord[]>([]);
+  const [currency, setCurrency] = useState<Currency>("MYR");
+  const [userId, setUserId] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
@@ -192,6 +194,24 @@ export default function IncomeOverview() {
   const [openModal, setOpenModal] = useState(false);
   const [selected, setSelected] = useState<IncomeRecord | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Get userId and subscribe to currency
+  useEffect(() => {
+    (async () => {
+      const stored = await AsyncStorage.getItem("userId");
+      const uid = stored || auth.currentUser?.uid || null;
+      if (uid) {
+        setUserId(uid);
+        if (!stored) await AsyncStorage.setItem("userId", uid);
+        const unsubCurrency = subscribeUserCurrency(uid, (curr) => {
+          setCurrency(curr);
+        });
+        return () => {
+          if (unsubCurrency) unsubCurrency();
+        };
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     let unsubInc: (() => void) | null = null;
@@ -380,7 +400,7 @@ export default function IncomeOverview() {
           <View style={styles.summaryHeaderRow}>
             <View>
               <Text style={styles.summaryLabel}>Total Income</Text>
-              <Text style={styles.summaryValue}>{fmtRM(totalIncome)}</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(totalIncome, currency)}</Text>
             </View>
             <View
               style={[
@@ -465,13 +485,14 @@ export default function IncomeOverview() {
                 <View style={styles.dayHeaderRow}>
                   <Text style={styles.dayHeaderText}>{g.header}</Text>
                   <View style={styles.dayTotalPill}>
-                    <Text style={styles.dayTotalText}>+{fmtRM(g.dayTotal)}</Text>
+                    <Text style={styles.dayTotalText}>+{formatCurrency(g.dayTotal, currency)}</Text>
                   </View>
                 </View>
                 {g.items.map((r) => (
                   <IncomeRow
                     key={r.id || r.dateISO + String(r.amount)}
                     r={r}
+                    currency={currency}
                     balanceAfter={r.id ? runningBalanceById[r.id] : undefined}
                     onPress={() => openRecord(r)}
                     onLongPress={() => openRecord(r)}
@@ -526,7 +547,7 @@ export default function IncomeOverview() {
                   <View style={styles.modalRow}>
                     <Text style={styles.modalLabel}>Amount</Text>
                     <Text style={[styles.modalValue, { color: BRAND_GREEN }]}>
-                      +{fmtRM(Number(selected.amount) || 0)}
+                      +{formatCurrency(Number(selected.amount) || 0, currency)}
                     </Text>
                   </View>
                   {!!selected.paymentMethod && (

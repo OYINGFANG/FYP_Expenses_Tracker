@@ -5,7 +5,7 @@ const NOTIFICATIONS_KEY = "appNotifications";
 
 export type AppNotification = {
   id: string; 
-  type: "debtReminder" | "savingsReminder" | "budgetReminder";
+  type: "debtReminder" | "savingsReminder" | "budgetReminder" | "badgeAchievement";
   header?: string;
   title: string;
   body: string;
@@ -15,6 +15,7 @@ export type AppNotification = {
   goalId?: string;
   monthKey?: string;
   category?: string;
+  badgeId?: string; // For badge achievement notifications
 };
 
 /**

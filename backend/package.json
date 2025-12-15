@@ -16,7 +16,9 @@
     "express": "^5.1.0",
     "firebase-admin": "^13.6.0",
     "multer": "^2.0.2",
+    "nodemailer": "^6.9.16",
     "ocr-space-api-alt2": "^2.0.1",
-    "openai": "^6.9.0"
+    "openai": "^6.9.0",
+    "uuid": "^11.0.3"
   }
 }

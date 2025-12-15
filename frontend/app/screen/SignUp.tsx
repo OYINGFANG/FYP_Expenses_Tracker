@@ -20,6 +20,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "../../firebase";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { CHAT_SERVER_URL } from "../services/api";
 
 const GENDERS = ["Male", "Female", "Other", "Prefer not to say"];
 
@@ -118,6 +119,7 @@ export default function Register() {
         accountStatus: "Active",
         onboardingCompleted: false,
         avatarUrl: "",
+        emailVerified: false, // Email verification status
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
@@ -125,10 +127,43 @@ export default function Register() {
       // 3) Save Firestore
       await setDoc(doc(db, "USERS", user.uid), userDoc);
 
+      // 4) Send verification email (optional - only if backend is configured)
+      try {
+        // Use the same backend URL as other screens (from api.ts)
+        // CHAT_SERVER_URL is already configured for your environment
+        const response = await fetch(`${CHAT_SERVER_URL}/api/email/send-verification`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            userId: user.uid,
+            username,
+          }),
+        });
+        
+        if (response.ok) {
+          console.log("✅ Verification email sent successfully");
+        } else {
+          console.warn("⚠️ Verification email endpoint returned error:", response.status);
+        }
+      } catch (emailError) {
+        console.warn("⚠️ Could not send verification email:", emailError);
+        // Don't fail registration if email fails - email verification is optional
+      }
+
       setIsLoading(false);
-      Alert.alert("🎉 Registration Successful", "Your account has been created!", [
-        { text: "Sign In", onPress: () => router.push("/screen/SignIn") },
-      ]);
+      
+      // Navigate to OTP verification screen
+      router.push({
+        pathname: "/screen/OTPVerification",
+        params: {
+          email: email,
+          userId: user.uid,
+          username: username,
+        },
+      });
     } catch (error: any) {
       setIsLoading(false);
       console.error("Error during registration:", error);
@@ -303,7 +338,7 @@ export default function Register() {
                 <View style={styles.inputContainer}>
                   <FontAwesome name="lock" size={32} color="#355E1C" />
                   <TextInput
-                    placeholder="Create a password (min. 6 characters)"
+                    placeholder="Create a password (min. 8 characters)"
                     placeholderTextColor="#9CA3AF"
                     secureTextEntry={!showPassword}
                     style={styles.input}
@@ -323,7 +358,7 @@ export default function Register() {
                 </View>
                 {password.length > 0 && password.length < 6 && (
                   <Text style={styles.errorText}>
-                    Password must be at least 6 characters
+                    Password must be at least 8 characters
                   </Text>
                 )}
               </View>

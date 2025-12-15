@@ -16,9 +16,11 @@ import {
   View,
 } from "react-native";
 import { auth } from "../../firebase";
+import { useOnboarding } from "../context/OnboardingContext";
 
 export default function SignIn() {
   const router = useRouter();
+  const { checkOnboardingStatus } = useOnboarding();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,6 +52,7 @@ export default function SignIn() {
     const checkLoginStatus = async () => {
       const loggedIn = await AsyncStorage.getItem("loggedIn");
       if (loggedIn === "true") {
+        // Navigate to Home - onboarding will be handled by OnboardingContext
         router.replace("/screen/Home");
       }
     };
@@ -81,6 +84,13 @@ export default function SignIn() {
       await AsyncStorage.setItem("userEmail", email);
 
       Alert.alert("✅ Success", "Logged in successfully!");
+      
+      // Check onboarding status after login (with a small delay to ensure state is set)
+      setTimeout(async () => {
+        await checkOnboardingStatus();
+      }, 300);
+      
+      // Navigate to Home - onboarding will be handled by OnboardingContext
       router.replace("/screen/Home");
     } catch (error) {
       console.log("❌ Login Error:", error);
@@ -117,7 +127,8 @@ export default function SignIn() {
           <View style={styles.inputContainer}>
             <MaterialCommunityIcons name="email" size={30} color="#355E1C" />
             <TextInput
-              placeholder="fangg@gmail.com"
+              placeholder="Enter email"
+              placeholderTextColor="#9AA29A"
               style={styles.input}
               value={email}
               onChangeText={setEmail}
@@ -128,9 +139,10 @@ export default function SignIn() {
 
           {/* Password */}
           <View style={styles.inputContainer}>
-            <FontAwesome name="lock" size={32} color="#355E1C" />
+            <FontAwesome name="lock" size={30} color="#355E1C" />
             <TextInput
               placeholder="Enter password"
+              placeholderTextColor="#9AA29A"
               secureTextEntry={!showPassword}
               style={styles.input}
               value={password}
