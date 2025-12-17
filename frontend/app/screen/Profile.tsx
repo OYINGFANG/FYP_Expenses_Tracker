@@ -50,6 +50,7 @@ type UserProfile = {
   currency?: "MYR" | "USD" | "SGD" | string;
   avatarUrl?: string;
   defaultPaymentMethod?: "Cash" | "Bank" | "Credit Card" | "E-Wallet";
+  emailVerified?: boolean;
   created_at?: any; // Firestore Timestamp
   updated_at?: any; // Firestore Timestamp
 };
@@ -1003,7 +1004,25 @@ export default function ProfileScreen() {
               
               <View style={styles.profileInfo}>
                 <Text style={styles.profileName}>{profile?.username || "Your Name"}</Text>
-                <Text style={styles.profileEmail}>{profile?.user_email || "you@example.com"}</Text>
+                <View style={styles.emailRow}>
+                  <Text style={styles.profileEmail}>{profile?.user_email || "you@example.com"}</Text>
+                  <View style={[
+                    styles.verifiedTextBadge,
+                    profile?.emailVerified ? styles.verifiedBadgeActive : styles.verifiedBadgeInactive
+                  ]}>
+                    <Ionicons 
+                      name={profile?.emailVerified ? "checkmark-circle" : "close-circle"} 
+                      size={14} 
+                      color={profile?.emailVerified ? "#10B981" : "#EF4444"} 
+                    />
+                    <Text style={[
+                      styles.verifiedText,
+                      profile?.emailVerified ? styles.verifiedTextActive : styles.verifiedTextInactive
+                    ]}>
+                      {profile?.emailVerified ? "Verified" : "Not Verified"}
+                    </Text>
+                  </View>
+                </View>
                 
                 <View style={styles.badgesRow}>
                   {age && (
@@ -1348,11 +1367,41 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginBottom: 4,
   },
+  emailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+    flexWrap: "wrap",
+  },
   profileEmail: {
     fontSize: 13,
     color: "#C9EAD6",
     fontWeight: "500",
-    marginBottom: 10,
+  },
+  verifiedTextBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  verifiedBadgeActive: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+  },
+  verifiedBadgeInactive: {
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+  },
+  verifiedText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  verifiedTextActive: {
+    color: "#10B981",
+  },
+  verifiedTextInactive: {
+    color: "#EF4444",
   },
   badgesRow: {
     flexDirection: "row",

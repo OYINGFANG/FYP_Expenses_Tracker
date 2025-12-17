@@ -1,4 +1,5 @@
 // app/utils/badgeNotificationUtils.ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { addNotification, type AppNotification } from "./notificationStore";
 import type { SavingsBadge } from "./SavingsUtils";
 
@@ -7,6 +8,9 @@ import type { SavingsBadge } from "./SavingsUtils";
  */
 export async function createBadgeNotification(badge: SavingsBadge): Promise<void> {
   try {
+    // Get userId for user-specific notifications
+    const userId = await AsyncStorage.getItem("userId");
+    
     const notification: AppNotification = {
       id: `badge_${badge.id}_${Date.now()}`,
       type: "badgeAchievement",
@@ -17,7 +21,7 @@ export async function createBadgeNotification(badge: SavingsBadge): Promise<void
       badgeId: badge.id,
     };
 
-    await addNotification(notification);
+    await addNotification(notification, userId);
   } catch (error) {
     console.error("Error creating badge notification:", error);
   }

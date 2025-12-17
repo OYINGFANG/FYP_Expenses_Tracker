@@ -6,7 +6,6 @@ import { AppNotification, addNotification, getNotifications } from "./notificati
 import { getBudgetProgress, getCurrentMonthKey } from "./budgetUtils";
 
 const BUDGET_NOTIFICATION_PREFIX = "budgetNotification:";
-const NOTIFICATIONS_KEY = "appNotifications";
 const BUDGET_WARNING_THRESHOLD = 0.8; // 80% of budget used
 const BUDGET_EXCEEDED_THRESHOLD = 1.0; // 100% of budget used
 
@@ -122,8 +121,11 @@ async function createBudgetExceededNotification(
   // Use stable ID to prevent duplicates
   const notificationId = `budget-exceeded-${monthKey}`;
   
+  // Get userId for user-specific notifications
+  const userId = await AsyncStorage.getItem("userId");
+  
   // Check if notification already exists
-  const existing = await getNotifications();
+  const existing = await getNotifications(userId);
   const alreadyExists = existing.some(n => n.id === notificationId);
   
   if (alreadyExists) {
@@ -137,8 +139,7 @@ async function createBudgetExceededNotification(
         createdAt: new Date().toISOString(),
         read: false,
       };
-      const updatedList = existing.map(n => n.id === notificationId ? updated : n);
-      await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updatedList));
+      await addNotification(updated, userId);
     }
     return; // Don't create duplicate push notification either
   }
@@ -175,7 +176,7 @@ async function createBudgetExceededNotification(
     monthKey,
   };
 
-  await addNotification(appNotification);
+  await addNotification(appNotification, userId);
 }
 
 /**
@@ -199,8 +200,11 @@ async function createBudgetWarningNotification(
   // Use stable ID to prevent duplicates
   const notificationId = `budget-warning-${monthKey}`;
   
+  // Get userId for user-specific notifications
+  const userId = await AsyncStorage.getItem("userId");
+  
   // Check if notification already exists
-  const existing = await getNotifications();
+  const existing = await getNotifications(userId);
   const alreadyExists = existing.some(n => n.id === notificationId);
   
   if (alreadyExists) {
@@ -214,8 +218,7 @@ async function createBudgetWarningNotification(
         createdAt: new Date().toISOString(),
         read: false,
       };
-      const updatedList = existing.map(n => n.id === notificationId ? updated : n);
-      await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updatedList));
+      await addNotification(updated, userId);
     }
     return; // Don't create duplicate push notification either
   }
@@ -252,7 +255,7 @@ async function createBudgetWarningNotification(
     monthKey,
   };
 
-  await addNotification(appNotification);
+  await addNotification(appNotification, userId);
 }
 
 /**
@@ -276,8 +279,11 @@ async function createCategoryBudgetExceededNotification(
   // Use stable ID to prevent duplicates
   const notificationId = `budget-category-${category}-${monthKey}`;
   
+  // Get userId for user-specific notifications
+  const userId = await AsyncStorage.getItem("userId");
+  
   // Check if notification already exists
-  const existing = await getNotifications();
+  const existing = await getNotifications(userId);
   const alreadyExists = existing.some(n => n.id === notificationId);
   
   if (alreadyExists) {
@@ -291,8 +297,7 @@ async function createCategoryBudgetExceededNotification(
         createdAt: new Date().toISOString(),
         read: false,
       };
-      const updatedList = existing.map(n => n.id === notificationId ? updated : n);
-      await AsyncStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(updatedList));
+      await addNotification(updated, userId);
     }
     return; // Don't create duplicate push notification either
   }
@@ -331,7 +336,7 @@ async function createCategoryBudgetExceededNotification(
     category,
   };
 
-  await addNotification(appNotification);
+  await addNotification(appNotification, userId);
 }
 
 /**

@@ -135,6 +135,9 @@ export async function scheduleDebtReminder(
     const storageKey = `${DEBT_REMINDER_PREFIX}${debt.id}`;
     await AsyncStorage.setItem(storageKey, notificationId);
 
+    // Get userId for user-specific notifications
+    const userId = await AsyncStorage.getItem("userId");
+    
     // Also create an AppNotification entry for the Notification Center
     const appNotification: AppNotification = {
       id: `debt-${debt.id}-${Date.now()}`,
@@ -146,7 +149,7 @@ export async function scheduleDebtReminder(
       read: false,
       debtId: debt.id,
     };
-    await addNotification(appNotification);
+    await addNotification(appNotification, userId);
 
     return notificationId;
   } catch (error) {

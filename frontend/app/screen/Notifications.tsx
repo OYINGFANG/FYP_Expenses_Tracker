@@ -14,8 +14,10 @@ import { Swipeable, GestureHandlerRootView } from "react-native-gesture-handler"
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   getNotifications,
+  subscribeToNotifications,
   markAllNotificationsRead,
   clearAllNotifications,
   markNotificationRead,
@@ -186,7 +188,8 @@ export default function Notifications() {
   const loadNotifications = useCallback(async () => {
     try {
       setLoading(true);
-      const notifs = await getNotifications();
+      const userId = await AsyncStorage.getItem("userId");
+      const notifs = await getNotifications(userId);
       setNotifications(notifs);
     } catch (error) {
       console.error("Error loading notifications:", error);
@@ -197,12 +200,32 @@ export default function Notifications() {
   }, []);
 
   useEffect(() => {
+    // Initial load
     loadNotifications();
+
+    // Subscribe to real-time updates
+    let unsubscribe: (() => void) | null = null;
+    const setupSubscription = async () => {
+      const userId = await AsyncStorage.getItem("userId");
+      unsubscribe = subscribeToNotifications(userId, (notifications) => {
+        setNotifications(notifications);
+        setLoading(false);
+      });
+    };
+    setupSubscription();
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, [loadNotifications]);
 
   const handleMarkAllRead = async () => {
     try {
-      await markAllNotificationsRead();
+      const userId = await AsyncStorage.getItem("userId");
+      await markAllNotificationsRead(userId);
       await loadNotifications();
     } catch (error) {
       console.error("Error marking notifications as read:", error);
@@ -221,7 +244,8 @@ export default function Notifications() {
           style: "destructive",
           onPress: async () => {
             try {
-              await clearAllNotifications();
+              const userId = await AsyncStorage.getItem("userId");
+              await clearAllNotifications(userId);
               await loadNotifications();
             } catch (error) {
               console.error("Error clearing notifications:", error);
@@ -235,7 +259,8 @@ export default function Notifications() {
 
   const handleMarkRead = async (id: string) => {
     try {
-      await markNotificationRead(id);
+      const userId = await AsyncStorage.getItem("userId");
+      await markNotificationRead(id, userId);
       await loadNotifications();
     } catch (error) {
       console.error("Error marking notification as read:", error);
@@ -245,7 +270,8 @@ export default function Notifications() {
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteNotification(id);
+      const userId = await AsyncStorage.getItem("userId");
+      await deleteNotification(id, userId);
       await loadNotifications();
     } catch (error) {
       console.error("Error deleting notification:", error);

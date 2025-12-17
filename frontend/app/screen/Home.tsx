@@ -22,7 +22,7 @@ import { subscribeUserExpenseRecords, ExpenseRecord } from "../utils/ExpensesUti
 import { getUserBudget, getCurrentMonthKey, getBudgetProgress, getMonthDateRange } from "../utils/budgetUtils";
 import { subscribeUserIncomeRecords, type IncomeRecord } from "../utils/IncomeUtils";
 import { subscribeUserDebts } from "../utils/DebtUtils";
-import { getNotifications } from "../utils/notificationStore";
+import { getNotifications, subscribeToNotifications } from "../utils/notificationStore";
 import { useFocusEffect } from "expo-router";
 import { checkAndCreateBudgetNotifications } from "../utils/budgetNotificationUtils";
 import { subscribeUserCurrency, formatCurrency, getCurrencySymbol, type Currency } from "../utils/currencyUtils";
@@ -407,7 +407,8 @@ useEffect(() => {
 // Load notification count
 const loadNotificationCount = async () => {
   try {
-    const notifications = await getNotifications();
+    const stored = await AsyncStorage.getItem("userId");
+    const notifications = await getNotifications(stored);
     const unreadCount = notifications.filter(n => !n.read).length;
     setUnreadNotificationCount(unreadCount);
   } catch (error) {
@@ -415,11 +416,28 @@ const loadNotificationCount = async () => {
   }
 };
 
-// Load notification count on mount and when screen is focused
+// Subscribe to real-time notification updates
 useEffect(() => {
-  loadNotificationCount();
+  let unsubscribe: (() => void) | null = null;
+  
+  const setupSubscription = async () => {
+    const stored = await AsyncStorage.getItem("userId");
+    unsubscribe = subscribeToNotifications(stored, (notifications) => {
+      const unreadCount = notifications.filter(n => !n.read).length;
+      setUnreadNotificationCount(unreadCount);
+    });
+  };
+  
+  setupSubscription();
+  
+  return () => {
+    if (unsubscribe) {
+      unsubscribe();
+    }
+  };
 }, []);
 
+// Also load on focus for immediate update
 useFocusEffect(
   useCallback(() => {
     loadNotificationCount();

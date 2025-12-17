@@ -125,6 +125,9 @@ export async function scheduleSavingsReminder(
     const storageKey = `${SAVINGS_REMINDER_PREFIX}${goal.id}`;
     await AsyncStorage.setItem(storageKey, notificationId);
 
+    // Get userId for user-specific notifications
+    const userId = await AsyncStorage.getItem("userId");
+    
     // Also create an AppNotification entry for the Notification Center
     const appNotification: AppNotification = {
       id: `savings-${goal.id}-${Date.now()}`,
@@ -136,7 +139,7 @@ export async function scheduleSavingsReminder(
       read: false,
       goalId: goal.id,
     };
-    await addNotification(appNotification);
+    await addNotification(appNotification, userId);
 
     return notificationId;
   } catch (error) {
