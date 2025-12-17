@@ -352,14 +352,14 @@ Extract the key structured data and return it as strict JSON with this shape:
       "sub_total": number | null,      // items total BEFORE any tax/service (sum of line items)
       "service_charge": number | null, // total service charge on the bill
       "tax": number | null,            // total SST/GST/VAT or similar tax
-      "date": string | null,
+      "date": string | null,          // CRITICAL: Extract the receipt date in any format (DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, or text like "Dec 17, 2025"). If no date is visible, return null.
       "ocr_text": string,
       "merchant_name": string | null,
       "payment_method": string | null,
       "items": [
         {
           "description": string,
-          "quantity": number | null,
+          "quantity": number | null,    // CRITICAL: Extract the quantity for each item. If receipt shows "2x Bread" or "Bread x2" or "Bread 2", set quantity to 2. If no quantity shown, set to 1 (not null).
           "unit_price": number | null,
           "amount": number | null      // line total = quantity * unit_price
         }
@@ -368,11 +368,14 @@ Extract the key structured data and return it as strict JSON with this shape:
   ]
 }
 
-VERY IMPORTANT RULES ABOUT TOTAL:
+VERY IMPORTANT RULES ABOUT TOTAL (CRITICAL):
 - Always set "total" to the FINAL amount the customer must pay, INCLUDING all SST/tax, service charges, and fees.
-- If the receipt shows both "SubTotal" and "Net Total" / "Grand Total" / "Total", choose the last one that includes taxes and service.
-- If you see lines like "Service Charge", "SST", "Tax", make sure they are INCLUDED in the "total" value.
+- Look for the line that says "Total", "Grand Total", "Net Total", "Amount Due", or "Payable" - this is usually at the bottom of the receipt.
+- If the receipt shows both "SubTotal" and "Net Total" / "Grand Total" / "Total", choose the LAST/BOTTOM one that includes taxes and service.
+- If you see lines like "Service Charge", "SST", "GST", "Tax", "Service", make sure they are INCLUDED in the "total" value.
+- Double-check: total should equal sub_total + service_charge + tax (if all are present).
 - Only use a subtotal (before tax) when no final total including tax appears anywhere.
+- Be very careful with decimal places and currency symbols (RM, $, etc.) - extract the exact numeric value.
 
 TAX BREAKDOWN RULES:
 - If the receipt has a clear items subtotal (before tax), put that number in "sub_total".
@@ -380,11 +383,43 @@ TAX BREAKDOWN RULES:
 - If the receipt has a line like "SST", "GST", "Tax", put the numeric amount into "tax".
 - If you cannot find a value for any of these (sub_total, service_charge, tax), set them to null.
 - Do NOT try to infer hidden taxes; only use amounts explicitly written on the receipt.
+- Verify: sub_total + service_charge + tax should approximately equal total (allow for rounding differences).
+
+DATE EXTRACTION RULES (CRITICAL):
+- Look for date fields like "Date:", "Transaction Date:", "Issued:", "Printed:", "Date/Time:", or dates near the top/bottom of receipt
+- Common formats: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, or text like "14 Dec 2023", "Dec 14, 2023", "December 14, 2023", "14/12/2023"
+- Look for timestamps too - they often contain dates: "Dec 14, 2023 9:18 AM" should extract "14 Dec 2023" or "Dec 14, 2023"
+- If you see a date anywhere on the receipt (even in a timestamp), extract it. Only return null if absolutely no date is visible.
+- Preserve the original format as a string (don't convert to ISO unless it's already ISO)
+- Be careful with year - if you see "2023" extract it as "2023", not "2025"
+
+QUANTITY EXTRACTION RULES (CRITICAL):
+- For each item, look for quantity indicators: "2x", "x2", "2 pcs", "Qty: 2", or numbers before/after item names
+- If an item shows "2 Bread" or "Bread 2" or "2x Bread" or "Bread x2", set quantity to 2
+- If the SAME item appears multiple times on separate lines (e.g., "M1 Hot RM3.70" appears twice), combine them into ONE item with quantity = number of occurrences
+- If no quantity is shown for an item, set quantity to 1 (NOT null)
+- The amount field should be the total line amount (quantity * unit_price)
+- If an item line shows "1x Item RM10.00", then quantity=1, unit_price=10.00, amount=10.00
+- If an item line shows "2x Item RM20.00", then quantity=2, unit_price=10.00, amount=20.00
+
+ITEM EXTRACTION RULES (CRITICAL):
+- Extract each distinct item as a separate entry in the items array
+- If you see modifiers or add-ons (like "- Soup" or "- Take Away"), decide if they should be:
+  a) Separate items (if they have their own price)
+  b) Part of the parent item description (if they're just modifiers without separate pricing)
+- Group related items together when they appear to be part of the same order line
+- Be careful not to duplicate items that appear multiple times - combine them with correct quantity instead
+
+CALCULATION VERIFICATION:
+- For each item: verify that amount = quantity * unit_price (or very close, allowing for rounding)
+- For the receipt: verify that sub_total + service_charge + tax ≈ total (allowing for rounding)
+- If calculations don't match, re-check your extraction - you may have misread a number
 
 General rules:
 - If you are unsure about any numeric field, set it to null instead of guessing.
 - Always include at least one object in "receipts".
 - Always include "ocr_text" with all text you can reasonably read.
+- Double-check all numbers for accuracy - OCR can misread digits (0 vs O, 1 vs I, 5 vs S, etc.)
 - ONLY output valid JSON, no extra commentary.`;
 
     let parsed;

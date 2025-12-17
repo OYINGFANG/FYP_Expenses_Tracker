@@ -222,7 +222,7 @@ export default function OTPVerification() {
           {/* Title */}
           <Text style={styles.title}>Verify Your Email</Text>
           <Text style={styles.subtitle}>
-            We've sent a 6-digit verification code to
+            We&apos;ve sent a 6-digit verification code to
           </Text>
 
           {/* Email Display */}
@@ -239,7 +239,9 @@ export default function OTPVerification() {
             {otp.map((digit, index) => (
               <TextInput
                 key={index}
-                ref={(ref) => (inputRefs.current[index] = ref)}
+                ref={(ref) => {
+                  inputRefs.current[index] = ref;
+                }}
                 style={[
                   styles.otpInput,
                   digit && styles.otpInputFilled,
@@ -279,7 +281,7 @@ export default function OTPVerification() {
 
           {/* Resend */}
           <View style={styles.resendContainer}>
-            <Text style={styles.resendText}>Didn't receive the code? </Text>
+            <Text style={styles.resendText}>Didn&apos;t receive the code? </Text>
             <TouchableOpacity
               onPress={handleResendOTP}
               disabled={countdown > 0 || resending}

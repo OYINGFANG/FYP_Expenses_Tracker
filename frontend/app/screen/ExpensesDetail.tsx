@@ -203,7 +203,7 @@ function Row({
 }
 
 /** ---------- Category Breakdown ---------- */
-function CategoryBreakdown({ expenses }: { expenses: ExpenseRecord[] }) {
+function CategoryBreakdown({ expenses, currency }: { expenses: ExpenseRecord[]; currency: Currency }) {
   const categoryData = useMemo(() => {
     const totals: Record<string, number> = {};
     expenses.forEach((r) => {
@@ -651,7 +651,7 @@ export default function ExpensesDetail() {
         {viewMode === "insights" ? (
           <>
             <SpendingInsights expenses={filteredExpenses} monthKey={monthKey} currency={currency} />
-            <CategoryBreakdown expenses={filteredExpenses} />
+            <CategoryBreakdown expenses={filteredExpenses} currency={currency} />
           </>
         ) : (
           <View style={styles.listContainer}>
@@ -712,45 +712,106 @@ export default function ExpensesDetail() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Expense details</Text>
+              <View style={styles.modalHeaderLeft}>
+                <Ionicons name="information-circle" size={18} color={BRAND_DARK} />
+                <Text style={styles.modalTitle}>Expense Details</Text>
+              </View>
               <TouchableOpacity onPress={() => setOpenModal(false)}>
                 <Ionicons name="close" size={20} color={BRAND_DARK} />
               </TouchableOpacity>
             </View>
 
             {selected && (
-              <>
-                <View style={styles.modalBody}>
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Date</Text>
-                    <Text style={styles.modalValue}>
-                      {new Date(selected.dateISO).toLocaleString()}
-                    </Text>
-                  </View>
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Category</Text>
-                    <Text style={styles.modalValue}>{selected.category || "Others"}</Text>
-                  </View>
-                  <View style={styles.modalRow}>
-                    <Text style={styles.modalLabel}>Amount</Text>
-                    <Text style={[styles.modalValue, { color: RED }]}>
-                      -{formatCurrency(Number(selected.amount) || 0, currency)}
-                    </Text>
-                  </View>
-                  {!!(selected as any).paymentMethod && (
+              <ScrollView 
+                style={styles.modalScrollView}
+                contentContainerStyle={styles.modalScrollContent}
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+              >
+                {/* Main Details Section */}
+                <View style={styles.modalSection}>
+                  
+                  <View style={styles.modalBody}>
                     <View style={styles.modalRow}>
-                      <Text style={styles.modalLabel}>Method</Text>
-                      <Text style={styles.modalValue}>{(selected as any).paymentMethod}</Text>
+                      <View style={styles.modalLabelContainer}>
+                        <Ionicons name="calendar-outline" size={16} color={MUTED} />
+                        <Text style={styles.modalLabel}>Date</Text>
+                      </View>
+                      <Text style={styles.modalValue} numberOfLines={1} ellipsizeMode="tail">
+                        {new Date(selected.dateISO).toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </Text>
                     </View>
-                  )}
-                  {!!(selected as any).note && (
+                    
                     <View style={styles.modalRow}>
-                      <Text style={styles.modalLabel}>Note</Text>
-                      <Text style={styles.modalValue}>{(selected as any).note}</Text>
+                      <View style={styles.modalLabelContainer}>
+                        <Ionicons name="time-outline" size={16} color={MUTED} />
+                        <Text style={styles.modalLabel}>Time</Text>
+                      </View>
+                      <Text style={styles.modalValue}>
+                        {new Date(selected.dateISO).toLocaleTimeString("en-US", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </Text>
                     </View>
-                  )}
+
+                    <View style={styles.modalDivider} />
+
+                    <View style={styles.modalRow}>
+                      <View style={styles.modalLabelContainer}>
+                        <Ionicons name="pricetag-outline" size={16} color={MUTED} />
+                        <Text style={styles.modalLabel}>Category</Text>
+                      </View>
+                      <View style={styles.modalCategoryBadge}>
+                        <Text style={styles.modalCategoryText}>{selected.category || "Others"}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.modalRow}>
+                      <View style={styles.modalLabelContainer}>
+                        <Ionicons name="cash-outline" size={16} color={MUTED} />
+                        <Text style={styles.modalLabel}>Amount</Text>
+                      </View>
+                      <Text style={[styles.modalValue, styles.modalAmount, { color: RED }]}>
+                        -{formatCurrency(Number(selected.amount) || 0, currency)}
+                      </Text>
+                    </View>
+
+                    {!!(selected as any).paymentMethod && (
+                      <View style={styles.modalRow}>
+                        <View style={styles.modalLabelContainer}>
+                          <Ionicons name="card-outline" size={16} color={MUTED} />
+                          <Text style={styles.modalLabel}>Payment Method</Text>
+                        </View>
+                        <View style={styles.modalPaymentBadge}>
+                          <Text style={styles.modalPaymentText}>{(selected as any).paymentMethod}</Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
+                {/* Notes Section */}
+                {(selected.description || (selected as any).note) && (
+                  <View style={styles.modalSection}>
+                    <View style={styles.modalSectionHeader}>
+                      <Ionicons name="document-text-outline" size={18} color={BRAND_DARK} />
+                      <Text style={styles.modalSectionTitle}>Notes</Text>
+                    </View>
+                    <View style={styles.modalNoteContainer}>
+                      <Text style={styles.modalNoteText}>
+                        {selected.description || (selected as any).note || "No notes"}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Action Buttons */}
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={[styles.modalBtn, styles.modalBtnGhost]}
@@ -767,7 +828,7 @@ export default function ExpensesDetail() {
                     <Text style={[styles.modalBtnText, { color: "#fff" }]}>Edit</Text>
                   </TouchableOpacity>
                 </View>
-              </>
+              </ScrollView>
             )}
           </View>
         </View>
@@ -1255,49 +1316,138 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 16,
-    maxHeight: "70%",
+    maxHeight: "85%",
+    flexDirection: "column",
+    flexShrink: 1,
   },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: LINE_SOFT,
+  },
+  modalHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  modalScrollView: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: 10,
+    flexGrow: 0,
+  },
+  modalSection: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+  },
+  modalSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalSectionTitle: {
+    fontSize: 15,
     fontWeight: "800",
     color: BRAND_DARK,
   },
   modalBody: {
-    marginTop: 10,
-    gap: 10,
+    gap: 14,
   },
   modalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "nowrap",
+  },
+  modalLabelContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flex: 1,
   },
   modalLabel: {
     color: MUTED,
     fontWeight: "700",
+    fontSize: 14,
   },
   modalValue: {
     color: BRAND_DARK,
     fontWeight: "700",
-    maxWidth: "60%",
+    fontSize: 14,
+    maxWidth: "70%",
     textAlign: "right",
+    flexShrink: 0,
+  },
+  modalAmount: {
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: LINE_SOFT,
+    marginVertical: 4,
+  },
+  modalCategoryBadge: {
+    backgroundColor: BRAND_GREEN + "15",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  modalCategoryText: {
+    color: BRAND_GREEN,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  modalPaymentBadge: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  modalPaymentText: {
+    color: BRAND_DARK,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  modalNoteContainer: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    padding: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: ACCENT_PURPLE,
+  },
+  modalNoteText: {
+    color: BRAND_DARK,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "500",
   },
   modalActions: {
     flexDirection: "row",
     gap: 10,
-    marginTop: 16,
-    justifyContent: "flex-end",
+    marginTop: 10,
+    marginBottom: 18,
+    paddingHorizontal: 16,
+    justifyContent: "center",
   },
   modalBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderRadius: 12,
   },
   modalBtnGhost: {
@@ -1308,6 +1458,7 @@ const styles = StyleSheet.create({
   },
   modalBtnText: {
     fontWeight: "800",
+    fontSize: 14,
   },
 });
 

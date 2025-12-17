@@ -93,7 +93,7 @@ export default function InteractiveTutorial({
       };
     }
     
-    // For "Meet Auri AI" step (step 3), center the tooltip on screen
+    // "Meet Auri AI" step (step 3)
     if (currentStep === 3 || step.id === "auri_ai") {
       return {
         top: SCREEN_HEIGHT * 0.40, // Center of screen
@@ -102,7 +102,7 @@ export default function InteractiveTutorial({
       };
     }
     
-    // For "You're All Set" step (step 7, displayed as "8 / 8"), position like welcome step
+    // "You're All Set" step (step 7, displayed as "8 / 8")
     if (currentStep === 7 || step.id === "complete") {
       return {
         top: SCREEN_HEIGHT * 0.38, // Same position as play_games step
@@ -118,14 +118,14 @@ export default function InteractiveTutorial({
     const { y, height } = actualHighlightPosition;
     const tooltipHeight = 200;
     const spacing = 20;
-    const bottomNavHeight = 100; // Height of bottom navigation area
+    const bottomNavHeight = 100; 
 
     // If highlight is in bottom navigation area, always show tooltip well above
     const isInBottomNav = y > SCREEN_HEIGHT - bottomNavHeight;
     
     if (isInBottomNav) {
       // For bottom nav items, show tooltip in upper area to avoid blocking the tab
-      // For Step 3 (view_wallet, displayed as "3 / 6"), position tooltip slightly below center
+      // Step 3 (view_wallet, displayed as "3 / 6")
       if (currentStep === 2) {
         return {
           top: SCREEN_HEIGHT * 0.38,
@@ -133,7 +133,7 @@ export default function InteractiveTutorial({
           right: 20,
         };
       }
-      // For Step 4 (auri_ai, displayed as "4 / 8"), position tooltip around the center of the screen
+      // Step 4 (auri_ai, displayed as "4 / 8")
       if (currentStep === 3) {
         return {
           top: 100,
@@ -141,10 +141,10 @@ export default function InteractiveTutorial({
           right: 20,
         };
       }
-      // For Step 7 (play_games, displayed as "7 / 8"), position tooltip slightly lower than welcome step
+      // Step 7 (play_games, displayed as "7 / 8")
       if (currentStep === 6 || step.id === "play_games") {
         return {
-          top: SCREEN_HEIGHT * 0.38, // Slightly lower than welcome step (0.33)
+          top: SCREEN_HEIGHT * 0.38, 
           left: 20,
           right: 20,
         };
@@ -158,7 +158,7 @@ export default function InteractiveTutorial({
         right: 20,
       };
     } else if (currentStep === 1) {
-      // For Step 2 (add_expense, displayed as "2 / 8"), position tooltip lower on screen
+      // Step 2 (add_expense, displayed as "2 / 8")
       // Position it at about 67% from top to be closer to the Add button
       return {
         top: SCREEN_HEIGHT * 0.67,

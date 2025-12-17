@@ -47,6 +47,17 @@ const normalizeReceiptDate = (rawDate?: string | null): string => {
       return trimmed.slice(0, 10);
     }
 
+    // YYYY/MM/DD or YYYY-MM-DD format (e.g., "2025/11/20")
+    const yyyyMatch = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (yyyyMatch) {
+      const year = parseInt(yyyyMatch[1], 10);
+      const month = parseInt(yyyyMatch[2], 10);
+      const day = parseInt(yyyyMatch[3], 10);
+      // Format directly as YYYY-MM-DD to avoid timezone conversion issues
+      const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      return iso;
+    }
+
     // Common receipt style: DD/MM/YYYY or DD-MM-YYYY (Malaysia style)
     const m = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
     if (m) {
@@ -54,20 +65,68 @@ const normalizeReceiptDate = (rawDate?: string | null): string => {
       const month = parseInt(m[2], 10);
       let year = parseInt(m[3], 10);
       if (year < 100) year += 2000; // handle YY as 20YY
-      const iso = new Date(year, month - 1, day).toISOString().split("T")[0];
+      // Format directly as YYYY-MM-DD to avoid timezone conversion issues
+      const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       return iso;
+    }
+
+    // Text formats: "14 Dec 2023", "Dec 14, 2023", "December 14, 2023"
+    const monthNames = [
+      "january", "february", "march", "april", "may", "june",
+      "july", "august", "september", "october", "november", "december",
+      "jan", "feb", "mar", "apr", "may", "jun",
+      "jul", "aug", "sep", "oct", "nov", "dec"
+    ];
+    
+    const textMatch = trimmed.match(/(\d{1,2})\s+([a-z]+)\s+(\d{2,4})/i);
+    if (textMatch) {
+      const day = parseInt(textMatch[1], 10);
+      const monthName = textMatch[2].toLowerCase();
+      let year = parseInt(textMatch[3], 10);
+      if (year < 100) year += 2000;
+      
+      const monthIndex = monthNames.indexOf(monthName);
+      if (monthIndex >= 0) {
+        const month = (monthIndex % 12) + 1;
+        // Format directly as YYYY-MM-DD to avoid timezone conversion issues
+        const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return iso;
+      }
+    }
+
+    // Also try "Dec 14, 2023" format
+    const textMatch2 = trimmed.match(/([a-z]+)\s+(\d{1,2}),?\s+(\d{2,4})/i);
+    if (textMatch2) {
+      const monthName = textMatch2[1].toLowerCase();
+      const day = parseInt(textMatch2[2], 10);
+      let year = parseInt(textMatch2[3], 10);
+      if (year < 100) year += 2000;
+      
+      const monthIndex = monthNames.indexOf(monthName);
+      if (monthIndex >= 0) {
+        const month = (monthIndex % 12) + 1;
+        // Format directly as YYYY-MM-DD to avoid timezone conversion issues
+        const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return iso;
+      }
     }
 
     // Fallback: let JS Date try to parse it
     const parsed = new Date(trimmed);
     if (!isNaN(parsed.getTime())) {
-      return parsed.toISOString().split("T")[0];
+      // Check if the parsed date is reasonable (not too far in past/future)
+      const now = new Date();
+      const diffYears = Math.abs(now.getFullYear() - parsed.getFullYear());
+      if (diffYears <= 10) { // Only accept dates within 10 years
+        return parsed.toISOString().split("T")[0];
+      }
     }
   } catch (e) {
     console.warn("Failed to normalize receipt date:", rawDate, e);
   }
 
   // Last resort: today
+  console.warn("⚠️ Could not parse receipt date, using today:", rawDate);
   return new Date().toISOString().split("T")[0];
 };
 

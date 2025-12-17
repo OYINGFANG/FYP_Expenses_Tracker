@@ -40,22 +40,52 @@ export default function SelectReceiptItems() {
 
   const [cartItems, setCartItems] = useState<ReceiptItem[]>(
     items.map((item) => {
-      const rawAmount: any = (item as any).amount;
-      const base = parseFloat(rawAmount != null ? String(rawAmount) : "0") || 0;
+      // OCR provides: amount (line total), unit_price, quantity
+      const rawAmount: any = (item as any).amount; // This is the LINE TOTAL
+      const rawUnitPrice: any = (item as any).unit_price; // This is the UNIT PRICE
+      const ocrQuantity = (item as any).quantity;
+      
+      const qty = typeof ocrQuantity === "number" && ocrQuantity > 0 ? ocrQuantity : 1;
+      
+      // Determine unit price:
+      // 1. If OCR provided unit_price, use it
+      // 2. Otherwise, if amount is line total and qty > 1, divide amount by qty
+      // 3. Otherwise, amount is already the unit price
+      let unitPrice: number;
+      if (typeof rawUnitPrice === "number" && rawUnitPrice > 0) {
+        unitPrice = rawUnitPrice;
+      } else {
+        const lineTotal = parseFloat(rawAmount != null ? String(rawAmount) : "0") || 0;
+        unitPrice = qty > 1 && lineTotal > 0 ? lineTotal / qty : lineTotal;
+      }
+      
       return {
         ...item,
-        amount: String(base.toFixed(2)),
-        baseAmount: base,
-        qty: 1,
+        amount: String(unitPrice.toFixed(2)), // Store unit price in amount field
+        baseAmount: unitPrice, // Store unit price in baseAmount
+        qty: qty, // Use detected quantity from OCR
         selected: true,
       };
     })
   );
 
+  // Calculate original total using line totals (amount * quantity) from OCR
   const originalItemsBaseTotal = items.reduce((sum, item: any) => {
-    const rawAmount = item?.amount;
-    const base = parseFloat(rawAmount != null ? String(rawAmount) : "0") || 0;
-    return sum + base;
+    const rawAmount = item?.amount; // This is line total from OCR
+    const rawUnitPrice = item?.unit_price;
+    const qty = typeof item?.quantity === "number" && item.quantity > 0 ? item.quantity : 1;
+    
+    // Use line total if available, otherwise calculate from unit_price * quantity
+    let lineTotal: number;
+    if (typeof rawAmount === "number" && rawAmount > 0) {
+      lineTotal = rawAmount;
+    } else if (typeof rawUnitPrice === "number" && rawUnitPrice > 0) {
+      lineTotal = rawUnitPrice * qty;
+    } else {
+      lineTotal = 0;
+    }
+    
+    return sum + lineTotal;
   }, 0);
 
   const [itemsSubtotal, setItemsSubtotal] = useState<number>(0);
