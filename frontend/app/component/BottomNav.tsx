@@ -6,6 +6,7 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useRouter } from "expo-router"; 
 import React, { useRef, useState, useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useOnboarding } from "../context/OnboardingContext";
 
 const BottomNav = () => {
@@ -14,8 +15,10 @@ const BottomNav = () => {
   
   const walletTabRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   const auriTabRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const gamesTabRef = useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   const [walletTabLayout, setWalletTabLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [auriTabLayout, setAuriTabLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [gamesTabLayout, setGamesTabLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   // Update highlight position when step changes or layout changes
   useEffect(() => {
@@ -31,11 +34,28 @@ const BottomNav = () => {
       });
     } else if (isOnboardingActive && currentStep === 3 && auriTabLayout) {
       console.log("Setting Auri AI tab highlight position:", auriTabLayout);
-      setHighlightPosition(auriTabLayout);
+      // Make the highlight box bigger for the Auri AI tab
+      setHighlightPosition({
+        ...auriTabLayout,
+        height: auriTabLayout.height + 65, // Increase height by 65px
+        width: auriTabLayout.width - 5, // Decrease width by 10px to make it smaller
+        y: auriTabLayout.y - 20, // Shift up by 20px to center the taller box
+        x: auriTabLayout.x + 3, // Shift right by 5px to center the narrower box
+      });
+    } else if (isOnboardingActive && currentStep === 6 && gamesTabLayout) {
+      console.log("Setting Games tab highlight position:", gamesTabLayout);
+      // Make the highlight box wider for the Games tab
+      setHighlightPosition({
+        ...gamesTabLayout,
+        width: gamesTabLayout.width + 30, // Increase width by 30px
+        height: gamesTabLayout.height + 30,
+        x: gamesTabLayout.x - 15, // Shift left by 15px to center the wider box
+        y: gamesTabLayout.y - 10,
+      });
     } else if (!isOnboardingActive) {
       setHighlightPosition(null);
     }
-  }, [isOnboardingActive, currentStep, walletTabLayout, auriTabLayout, setHighlightPosition]);
+  }, [isOnboardingActive, currentStep, walletTabLayout, auriTabLayout, gamesTabLayout, setHighlightPosition]);
 
   return (
     <View style={styles.container}>
@@ -98,7 +118,31 @@ const BottomNav = () => {
       </TouchableOpacity>
 
       {/* Games */}
-      <TouchableOpacity style={styles.tab} onPress={() => router.push("/screen/Game/titlePage/TitlePage")}>
+      <TouchableOpacity
+        ref={gamesTabRef}
+        style={styles.tab}
+        onPress={() => {
+          console.log("Games tab pressed, onboarding active:", isOnboardingActive, "step:", currentStep);
+          if (isOnboardingActive && currentStep === 6) {
+            // Mark that user is completing step 6 (games), will advance when they return
+            AsyncStorage.setItem("onboardingStep6Completed", "true");
+          }
+          router.push("/screen/Game/titlePage/TitlePage");
+        }}
+        onLayout={(event) => {
+          const { x, y, width, height } = event.nativeEvent.layout;
+          // Get absolute position relative to window
+          gamesTabRef.current?.measureInWindow((px: number, py: number, fwidth: number, fheight: number) => {
+            console.log("Games tab layout:", { x: px, y: py, width: fwidth, height: fheight });
+            setGamesTabLayout({ 
+              x: px, 
+              y: py, 
+              width: fwidth, 
+              height: fheight 
+            });
+          });
+        }}
+      >
         <Ionicons name="game-controller" size={32} color="#fff" />
         <Text style={styles.label}>Games</Text>
       </TouchableOpacity>

@@ -68,7 +68,7 @@ export default function InteractiveTutorial({
       fadeAnim.setValue(0);
       scaleAnim.setValue(0.8);
     }
-  }, [visible, currentStep]);
+  }, [visible, currentStep, fadeAnim, scaleAnim]);
 
   if (!visible || currentStep >= steps.length) return null;
 
@@ -86,8 +86,27 @@ export default function InteractiveTutorial({
     // For welcome step, center the tooltip
     if (currentStep === 0) {
       return { 
-        top: SCREEN_HEIGHT * 0.4, 
+        // slightly higher on the screen for the welcome step
+        top: SCREEN_HEIGHT * 0.33, 
         left: 20, 
+        right: 20,
+      };
+    }
+    
+    // For "Meet Auri AI" step (step 3), center the tooltip on screen
+    if (currentStep === 3 || step.id === "auri_ai") {
+      return {
+        top: SCREEN_HEIGHT * 0.40, // Center of screen
+        left: 20,
+        right: 20,
+      };
+    }
+    
+    // For "You're All Set" step (step 7, displayed as "8 / 8"), position like welcome step
+    if (currentStep === 7 || step.id === "complete") {
+      return {
+        top: SCREEN_HEIGHT * 0.38, // Same position as play_games step
+        left: 20,
         right: 20,
       };
     }
@@ -106,7 +125,7 @@ export default function InteractiveTutorial({
     
     if (isInBottomNav) {
       // For bottom nav items, show tooltip in upper area to avoid blocking the tab
-      // For Step 3 (view_wallet, displayed as "3 / 6"), position tooltip lower
+      // For Step 3 (view_wallet, displayed as "3 / 6"), position tooltip slightly below center
       if (currentStep === 2) {
         return {
           top: SCREEN_HEIGHT * 0.38,
@@ -114,14 +133,23 @@ export default function InteractiveTutorial({
           right: 20,
         };
       }
-      // For Step 4 (auri_ai, displayed as "4 / 6"), position tooltip lower
+      // For Step 4 (auri_ai, displayed as "4 / 8"), position tooltip around the center of the screen
       if (currentStep === 3) {
         return {
-          top: SCREEN_HEIGHT * 0.38,
+          top: 100,
           left: 20,
           right: 20,
         };
       }
+      // For Step 7 (play_games, displayed as "7 / 8"), position tooltip slightly lower than welcome step
+      if (currentStep === 6 || step.id === "play_games") {
+        return {
+          top: SCREEN_HEIGHT * 0.38, // Slightly lower than welcome step (0.33)
+          left: 20,
+          right: 20,
+        };
+      }
+      
       // For other bottom nav items, position at 25% from top
       const topPosition = SCREEN_HEIGHT * 0.25;
       return {
@@ -130,10 +158,24 @@ export default function InteractiveTutorial({
         right: 20,
       };
     } else if (currentStep === 1) {
-      // For Step 2 (add_expense, displayed as "2 / 6"), position tooltip lower on screen
-      // Position it at about 65% from top to be closer to the Add button
+      // For Step 2 (add_expense, displayed as "2 / 8"), position tooltip lower on screen
+      // Position it at about 67% from top to be closer to the Add button
       return {
         top: SCREEN_HEIGHT * 0.67,
+        left: 20,
+        right: 20,
+      };
+    } else if (currentStep === 4 || step.id === "savings_goals") {
+      // For "Set Savings Goals" step (step 4), position tooltip lower to see highlighted box
+      return {
+        top: SCREEN_HEIGHT * 0.68, // Lower on screen to see the highlighted box above
+        left: 20,
+        right: 20,
+      };
+    } else if (currentStep === 5 || step.id === "manage_debt") {
+      // For "Manage Your Debts" step (step 5), position tooltip lower to see highlighted box
+      return {
+        top: SCREEN_HEIGHT * 0.68, // Lower on screen to see the highlighted box above
         left: 20,
         right: 20,
       };
@@ -250,7 +292,7 @@ export default function InteractiveTutorial({
         )}
 
         {/* Highlight border - visual indicator */}
-        {actualHighlightPosition && (
+        {actualHighlightPosition && currentStep !== 3 && (
           <View
             style={[
               styles.cutoutBorder,
@@ -281,7 +323,7 @@ export default function InteractiveTutorial({
           collapsable={false}
         >
           <LinearGradient
-            colors={["#1E5449", "#154C42"]}
+            colors={["#FFFFFF", "#F9FAFB"]}
             style={styles.tooltipGradient}
             pointerEvents="auto"
           >
@@ -290,6 +332,14 @@ export default function InteractiveTutorial({
               <Text style={styles.stepText}>
                 {currentStep + 1} / {steps.length}
               </Text>
+            </View>
+
+            {/* Header pill with icon */}
+            <View style={styles.headerRow}>
+              <View style={styles.badge}>
+                <Ionicons name="sparkles-outline" size={16} color="#115D59" />
+                <Text style={styles.badgeText}>Quick tip</Text>
+              </View>
             </View>
 
             {/* Title */}
@@ -315,14 +365,13 @@ export default function InteractiveTutorial({
                   onPress={isLastStep ? onComplete : onNext}
                 >
                   <Text style={styles.nextButtonText}>
-                    {isLastStep ? "Get Started" : step.buttonText || "Next"}
+                    {isLastStep ? "Got it" : step.buttonText || "Next"}
                   </Text>
                   {!isLastStep && (
                     <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
                   )}
                 </TouchableOpacity>
               )}
-              
             </View>
           </LinearGradient>
         </Animated.View>
@@ -337,13 +386,13 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
   },
   overlayWithCutout: {
     ...StyleSheet.absoluteFillObject,
   },
   overlaySection: {
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
   },
   overlayRow: {
     flexDirection: "row",
@@ -356,8 +405,8 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     borderRadius: 12,
     borderWidth: 3,
-    borderColor: "#22C55E",
-    shadowColor: "#22C55E",
+    borderColor: "#115D59",
+    shadowColor: "#115D59",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 10,
@@ -368,36 +417,64 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH - 40,
     alignSelf: "center",
     borderRadius: 20,
-    overflow: "hidden",
+    overflow: "visible",
     zIndex: 1000,
   },
   tooltipGradient: {
-    padding: 24,
+    padding: 22,
+    borderRadius: 20,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 16,
   },
   stepIndicator: {
     alignSelf: "flex-start",
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "rgba(148, 163, 184, 0.16)",
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-    marginBottom: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginBottom: 10,
   },
   stepText: {
-    color: "#FFFFFF",
+    color: "#4B5563",
     fontSize: 12,
     fontWeight: "600",
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#FFFFFF",
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 12,
   },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#ECFDF3",
+    gap: 6,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#166534",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+  },
   description: {
-    fontSize: 16,
-    color: "#E5E7EB",
-    lineHeight: 24,
-    marginBottom: 24,
+    fontSize: 14,
+    color: "#4B5563",
+    lineHeight: 22,
+    marginBottom: 20,
   },
   buttonRow: {
     flexDirection: "row",
@@ -410,15 +487,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   skipButtonText: {
-    color: "#FFFFFF",
+    color: "#6B7280",
     fontSize: 16,
     fontWeight: "600",
-    opacity: 0.7,
+    opacity: 0.9,
   },
   nextButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#22C55E",
+    backgroundColor: "#115D59",
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 12,
@@ -440,7 +517,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   interactionHintText: {
-    color: "#22C55E",
+    color: "#115D59",
     fontSize: 14,
     fontWeight: "600",
   },

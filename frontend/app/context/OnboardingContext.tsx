@@ -5,7 +5,7 @@ import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { db } from "../../firebase";
 import { TutorialStep } from "../component/TutorialOverlay";
 import { checkOnboardingStatus as checkOnboardingStatusUtil } from "../utils/onboardingUtils";
-import { Currency } from "../utils/currencyUtils";
+import { Currency, updateUserCurrency } from "../utils/currencyUtils";
 import CurrencySelectionModal from "../component/CurrencySelectionModal";
 
 type OnboardingContextType = {
@@ -61,10 +61,26 @@ const ONBOARDING_STEPS: TutorialStep[] = [
   {
     id: "savings_goals",
     title: "Set Savings Goals",
-    description: "Create savings goals to track your progress. Tap 'Savings' on the home screen or find it in your Profile.",
+    description: "Create savings goals to track your progress. Tap the 'Savings' button to get started!",
     position: "center",
-    buttonText: "Next",
-    allowInteraction: false,
+    buttonText: "I'll try it",
+    allowInteraction: true, // Allow user to tap the Savings button
+  },
+  {
+    id: "manage_debt",
+    title: "Manage Your Debts",
+    description: "Track and manage your debts efficiently. Tap the 'Debt' button to add your debts and monitor your debt health score!",
+    position: "center",
+    buttonText: "I'll try it",
+    allowInteraction: true, // Allow user to tap the Debt button
+  },
+  {
+    id: "play_games",
+    title: "Play Financial Games 🎮",
+    description: "Learn financial management through fun games! Tap the 'Games' tab at the bottom to explore interactive financial games.",
+    position: "bottom",
+    buttonText: "Let's play",
+    allowInteraction: true, // Allow user to tap Games tab
   },
   {
     id: "complete",
@@ -149,24 +165,23 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   };
 
   const handleCurrencySelected = async (currency: Currency) => {
-    try {
-      const userId = await AsyncStorage.getItem("userId");
+    // Close modal and advance immediately for better UX
+    setShowCurrencyModal(false);
+    setCurrentStep(1); // Move to step 2 (add_expense)
+    setHighlightPosition(null);
+    
+    // Update currency in the background (non-blocking)
+    AsyncStorage.getItem("userId").then((userId) => {
       if (userId) {
-        const { updateUserCurrency } = await import("../utils/currencyUtils");
-        await updateUserCurrency(userId, currency);
+        // Fire and forget - update in background without blocking UI
+        updateUserCurrency(userId, currency).catch((error) => {
+          console.error("Error saving currency:", error);
+          // Error is logged but doesn't block the onboarding flow
+        });
       }
-      setShowCurrencyModal(false);
-      // Move to step 2 (add_expense) after currency selection
-      // Step 1 (welcome) -> Currency Modal -> Step 2 (add_expense)
-      setCurrentStep(1); // Skip the removed currency tutorial step
-      setHighlightPosition(null);
-    } catch (error) {
-      console.error("Error saving currency:", error);
-      setShowCurrencyModal(false);
-      // Still move to next step even if save fails
-      setCurrentStep(1); // Skip the removed currency tutorial step
-      setHighlightPosition(null);
-    }
+    }).catch((error) => {
+      console.error("Error getting userId:", error);
+    });
   };
 
   const skipOnboarding = async () => {

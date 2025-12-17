@@ -67,8 +67,18 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
   const [textInputHeight, setTextInputHeight] = useState(45);
   const [botTyping, setBotTyping] = useState(false);
   const [typingDots, setTypingDots] = useState("");
+  const [isVideoReady, setIsVideoReady] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
+  const videoRef = useRef<Video>(null);
+
+  // Initialize video status and handle playback
+  useEffect(() => {
+    return () => {
+      // Cleanup on unmount
+      videoRef.current?.unloadAsync();
+    };
+  }, []);
 
   // Fetch username from Firestore and send greeting
   useEffect(() => {
@@ -377,14 +387,37 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
 
   return (
     <View style={styles.container}>
-      {/* 🔹 Fixed background video */}
+      {/* 🔹 Fixed background video - starts loading immediately on mount */}
       <Video
+        ref={videoRef}
         source={require("@/assets/images/angry.mp4")}
         style={styles.background}
         shouldPlay
         isLooping
         isMuted={false}
         resizeMode={ResizeMode.COVER}
+        onLoadStart={() => {
+          console.log("Video loading started");
+        }}
+        onLoad={() => {
+          console.log("Video loaded and ready");
+          setIsVideoReady(true);
+          // Ensure video starts playing
+          videoRef.current?.setIsLoopingAsync(true).catch(() => {});
+          videoRef.current?.playAsync().catch((err) => {
+            console.error("Error playing video:", err);
+          });
+        }}
+        onPlaybackStatusUpdate={(status) => {
+          // Handle looping - replay when video finishes
+          if (status.isLoaded && status.didJustFinish) {
+            videoRef.current?.replayAsync().catch(() => {});
+          }
+        }}
+        onError={(error) => {
+          console.error("Video loading error:", error);
+          setIsVideoReady(true);
+        }}
       />
       <View style={styles.overlay} />
 

@@ -47,14 +47,14 @@ export default function CurrencySelectionModal({
       <View style={styles.container}>
         <View style={styles.modal}>
           <LinearGradient
-            colors={["#1E5449", "#154C42"]}
+            colors={["#FFFFFF", "#F9FAFB"]}
             style={styles.modalGradient}
           >
             <View style={styles.header}>
-              <Ionicons name="cash-outline" size={32} color="#22C55E" />
+              <Ionicons name="cash-outline" size={32} color="#115D59" />
               <Text style={styles.title}>Choose Your Currency</Text>
               <Text style={styles.subtitle}>
-                Select the currency you'll use for tracking expenses and income
+                Select the currency you will use for tracking expenses and income
               </Text>
             </View>
 
@@ -78,7 +78,14 @@ export default function CurrencySelectionModal({
                         selectedCurrency === currency.code && styles.currencyIconSelected,
                       ]}
                     >
-                      <Text style={styles.currencySymbol}>{currency.symbol}</Text>
+                      <Text
+                        style={[
+                          styles.currencySymbol,
+                          selectedCurrency === currency.code && styles.currencySymbolSelected,
+                        ]}
+                      >
+                        {currency.symbol}
+                      </Text>
                     </View>
                     <View style={styles.currencyInfo}>
                       <Text
@@ -100,7 +107,7 @@ export default function CurrencySelectionModal({
                     </View>
                   </View>
                   {selectedCurrency === currency.code && (
-                    <Ionicons name="checkmark-circle" size={24} color="#22C55E" />
+                    <Ionicons name="checkmark-circle" size={24} color="#115D59" />
                   )}
                 </TouchableOpacity>
               ))}
@@ -111,7 +118,7 @@ export default function CurrencySelectionModal({
               onPress={handleSelect}
             >
               <LinearGradient
-                colors={["#22C55E", "#16A34A"]}
+                colors={["#115D59", "#0C4743"]}
                 style={styles.confirmButtonGradient}
               >
                 <Text style={styles.confirmButtonText}>Continue</Text>
@@ -138,25 +145,32 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     borderRadius: 24,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 18,
+    marginTop: 60, // position modal slightly lower on the screen
   },
   modalGradient: {
     padding: 24,
-    maxHeight: "80%",
+    maxHeight: "90%",
+    borderRadius: 24,
   },
   header: {
     alignItems: "center",
     marginBottom: 24,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "800",
-    color: "#FFFFFF",
+    color: "#111827",
     marginTop: 12,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: "#E5E7EB",
+    color: "#4B5563",
     textAlign: "center",
     lineHeight: 20,
   },
@@ -167,15 +181,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   currencyItemSelected: {
-    backgroundColor: "rgba(34, 197, 94, 0.2)",
+    backgroundColor: "#ECFDF3",
     borderWidth: 2,
-    borderColor: "#22C55E",
+    borderColor: "#115D59",
   },
   currencyLeft: {
     flexDirection: "row",
@@ -186,17 +202,23 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "#FFFFFF",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   currencyIconSelected: {
-    backgroundColor: "#22C55E",
+    backgroundColor: "#115D59",
+    borderColor: "#115D59",
   },
   currencySymbol: {
     fontSize: 18,
     fontWeight: "700",
+    color: "#166534",
+  },
+  currencySymbolSelected: {
     color: "#FFFFFF",
   },
   currencyInfo: {
@@ -205,18 +227,18 @@ const styles = StyleSheet.create({
   currencyCode: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#FFFFFF",
+    color: "#111827",
     marginBottom: 4,
   },
   currencyCodeSelected: {
-    color: "#22C55E",
+    color: "#166534",
   },
   currencyName: {
     fontSize: 14,
-    color: "#E5E7EB",
+    color: "#6B7280",
   },
   currencyNameSelected: {
-    color: "#C9EAD6",
+    color: "#166534",
   },
   confirmButton: {
     marginTop: 24,

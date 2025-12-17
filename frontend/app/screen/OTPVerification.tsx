@@ -23,7 +23,8 @@ export default function OTPVerification() {
   
   const email = params.email as string;
   const userId = params.userId as string;
-  const username = params.username as string;
+  const username = (params.username as string) || "User";
+  const purpose = (params.purpose as string) || "verifyEmail"; // "verifyEmail" | "resetPassword"
 
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -84,7 +85,12 @@ export default function OTPVerification() {
     Keyboard.dismiss();
 
     try {
-      const response = await fetch(`${CHAT_SERVER_URL}/api/email/verify-otp`, {
+      const endpoint =
+        purpose === "resetPassword"
+          ? "/api/auth/verify-reset-otp"
+          : "/api/email/verify-otp";
+
+      const response = await fetch(`${CHAT_SERVER_URL}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -92,22 +98,34 @@ export default function OTPVerification() {
         body: JSON.stringify({
           userId,
           otpCode: code,
+          email,
         }),
       });
 
       const data = await response.json();
 
       if (response.ok && data.success) {
-        Alert.alert(
-          "✅ Success",
-          "Your email has been verified successfully!",
-          [
-            {
-              text: "Continue",
-              onPress: () => router.replace("/screen/SignIn"),
+        if (purpose === "resetPassword") {
+          // Go to reset password screen after successful OTP verification
+          router.push({
+            pathname: "/screen/ResetPassword",
+            params: {
+              email,
+              userId,
             },
-          ]
-        );
+          });
+        } else {
+          Alert.alert(
+            "✅ Success",
+            "Your email has been verified successfully!",
+            [
+              {
+                text: "Continue",
+                onPress: () => router.replace("/screen/SignIn"),
+              },
+            ]
+          );
+        }
       } else {
         Alert.alert(
           "Verification Failed",
@@ -135,7 +153,12 @@ export default function OTPVerification() {
 
     setResending(true);
     try {
-      const response = await fetch(`${CHAT_SERVER_URL}/api/email/resend-otp`, {
+      const endpoint =
+        purpose === "resetPassword"
+          ? "/api/auth/request-password-reset"
+          : "/api/email/resend-otp";
+
+      const response = await fetch(`${CHAT_SERVER_URL}${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

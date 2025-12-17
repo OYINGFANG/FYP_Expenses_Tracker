@@ -148,7 +148,14 @@ export default function Home() {
       monthTotal?: number;
       trendMoM?: number;
     };
-  } | null>(null);
+  } | null>({
+    insights: [],
+    summary: {},
+    totals: {
+      monthTotal: 0,
+      trendMoM: 0, // Default value to prevent layout shifts
+    },
+  });
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [categoryBreakdown, setCategoryBreakdown] = useState<Record<string, number>>({});
   const [isScanningReceipt, setIsScanningReceipt] = useState(false);
@@ -192,15 +199,48 @@ export default function Home() {
     }
   }, [userId, checkOnboardingStatus]);
 
-  // Detect when user returns from AddRecord screen and advance tutorial
+  // Detect when user returns from AddRecord or Debt screen and advance tutorial
   useFocusEffect(
     useCallback(() => {
       const checkStepCompletion = async () => {
         if (isOnboardingActive && currentStep === 1) {
           const step1Completed = await AsyncStorage.getItem("onboardingStep1Completed");
           if (step1Completed === "true") {
-            console.log("User returned from AddRecord, advancing to Step 3 (view_wallet)");
+            console.log("User returned from AddRecord, advancing to Step 2 (view_wallet)");
             await AsyncStorage.removeItem("onboardingStep1Completed");
+            // Small delay to ensure screen is fully loaded
+            setTimeout(() => {
+              nextStep();
+            }, 500);
+          }
+        }
+        if (isOnboardingActive && currentStep === 4) {
+          const step4Completed = await AsyncStorage.getItem("onboardingStep4Completed");
+          if (step4Completed === "true") {
+            console.log("User returned from Savings screen, advancing to Step 5 (manage_debt)");
+            await AsyncStorage.removeItem("onboardingStep4Completed");
+            // Small delay to ensure screen is fully loaded
+            setTimeout(() => {
+              nextStep();
+            }, 500);
+          }
+        }
+        if (isOnboardingActive && currentStep === 5) {
+          const step5Completed = await AsyncStorage.getItem("onboardingStep5Completed");
+          if (step5Completed === "true") {
+            console.log("User returned from Debt screen, advancing to Step 6 (play_games)");
+            await AsyncStorage.removeItem("onboardingStep5Completed");
+            // Small delay to ensure screen is fully loaded
+            setTimeout(() => {
+              nextStep();
+            }, 500);
+          }
+        }
+        if (isOnboardingActive && currentStep === 6) {
+          const step6Completed = await AsyncStorage.getItem("onboardingStep6Completed");
+          if (step6Completed === "true") {
+            console.log("User returned from Games screen, advancing to Step 7 (complete)");
+            await AsyncStorage.removeItem("onboardingStep6Completed");
             // Small delay to ensure screen is fully loaded
             setTimeout(() => {
               nextStep();
@@ -214,8 +254,12 @@ export default function Home() {
   );
   
   const addButtonRef = React.useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const debtButtonRef = React.useRef<React.ElementRef<typeof TouchableOpacity>>(null);
+  const savingsButtonRef = React.useRef<React.ElementRef<typeof TouchableOpacity>>(null);
   const scrollViewRef = React.useRef<ScrollView>(null);
   const [addButtonLayout, setAddButtonLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [debtButtonLayout, setDebtButtonLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [savingsButtonLayout, setSavingsButtonLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [scrollY, setScrollY] = useState(0);
 
   // Load user data
@@ -608,7 +652,7 @@ const debtHealth = useMemo(() => {
     } catch (e: any) {
       console.error("AI Behavior analysis error:", e);
       setIsLoadingAnalysis(false);
-      // Set a fallback message
+      // Set a fallback message with default trendMoM to prevent layout shifts
       setBehaviourReport({
         insights: [
           {
@@ -618,7 +662,10 @@ const debtHealth = useMemo(() => {
           },
         ],
         summary: {},
-        totals: {},
+        totals: {
+          monthTotal: 0,
+          trendMoM: 0, // Default value to prevent layout shifts
+        },
       });
     }
   };
@@ -900,20 +947,42 @@ const debtHealth = useMemo(() => {
                   <View style={styles.trendContainer}>
                     <View style={[
                       styles.trendBadge,
-                      { backgroundColor: behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)' }
+                      { 
+                        backgroundColor: isLoadingAnalysis 
+                          ? 'rgba(156, 163, 175, 0.2)' // Gray background while loading
+                          : behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 
+                            ? 'rgba(239, 68, 68, 0.2)' 
+                            : 'rgba(16, 185, 129, 0.2)' 
+                      }
                     ]}>
                       <Ionicons 
-                        name={behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 ? "trending-up" : "trending-down"} 
+                        name={isLoadingAnalysis 
+                          ? "hourglass-outline" 
+                          : behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 
+                            ? "trending-up" 
+                            : "trending-down"
+                        } 
                         size={16} 
-                        color={behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 ? "#EF4444" : "#10B981"} 
+                        color={isLoadingAnalysis 
+                          ? "#9CA3AF" 
+                          : behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 
+                            ? "#EF4444" 
+                            : "#10B981"
+                        } 
                       />
                       <Text style={[
                         styles.trendText,
-                        { color: behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 ? "#EF4444" : "#10B981" }
+                        { 
+                          color: isLoadingAnalysis 
+                            ? "#9CA3AF" 
+                            : behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 
+                              ? "#EF4444" 
+                              : "#10B981"
+                        }
                       ]}>
-                        {behaviourReport.totals.trendMoM !== undefined 
-                          ? `${behaviourReport.totals.trendMoM > 0 ? '+' : ''}${(behaviourReport.totals.trendMoM * 100).toFixed(1)}%`
-                          : '0%'
+                        {isLoadingAnalysis 
+                          ? '0%' 
+                          : `${behaviourReport.totals.trendMoM && behaviourReport.totals.trendMoM > 0 ? '+' : ''}${((behaviourReport.totals.trendMoM || 0) * 100).toFixed(1)}%`
                         } vs last month
                       </Text>
                     </View>
@@ -980,14 +1049,67 @@ const debtHealth = useMemo(() => {
                   <Text style={styles.actionText}>Scan</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={[styles.actionBox, { backgroundColor: "#BBDEFB" }]} onPress={() => router.push("/screen/Savings")}>
+                <TouchableOpacity
+                  ref={savingsButtonRef}
+                  style={[
+                    styles.actionBox,
+                    { backgroundColor: "#BBDEFB" },
+                    isOnboardingActive && currentStep === 4 && { zIndex: 1000, elevation: 1000 }
+                  ]}
+                  onPress={() => {
+                    console.log("Savings button pressed, onboarding active:", isOnboardingActive, "step:", currentStep);
+                    if (isOnboardingActive && currentStep === 4) {
+                      // Mark that user is completing step 4 (savings), will advance when they return
+                      AsyncStorage.setItem("onboardingStep4Completed", "true");
+                    }
+                    router.push("/screen/Savings");
+                  }}
+                  onLayout={(event) => {
+                    const { x, y, width, height } = event.nativeEvent.layout;
+                    // Get absolute position relative to window
+                    savingsButtonRef.current?.measureInWindow((px: number, py: number, fwidth: number, fheight: number) => {
+                      console.log("Savings button layout:", { x: px, y: py, width: fwidth, height: fheight });
+                      setSavingsButtonLayout({ 
+                        x: px, 
+                        y: py, 
+                        width: fwidth, 
+                        height: fheight 
+                      });
+                    });
+                  }}
+                >
                   <Ionicons name="wallet-outline" size={28} color="#1E3932" />
                   <Text style={styles.actionText}>Savings</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.actionBox, { backgroundColor: "#F3E8FF" }]}
-                  onPress={() => router.push("/screen/Debt")}
+                  ref={debtButtonRef}
+                  style={[
+                    styles.actionBox,
+                    { backgroundColor: "#F3E8FF" },
+                    isOnboardingActive && currentStep === 5 && { zIndex: 1000, elevation: 1000 }
+                  ]}
+                  onPress={() => {
+                    console.log("Debt button pressed, onboarding active:", isOnboardingActive, "step:", currentStep);
+                    if (isOnboardingActive && currentStep === 5) {
+                      // Mark that user is completing step 5 (debt), will advance when they return
+                      AsyncStorage.setItem("onboardingStep5Completed", "true");
+                    }
+                    router.push("/screen/Debt");
+                  }}
+                  onLayout={(event) => {
+                    const { x, y, width, height } = event.nativeEvent.layout;
+                    // Get absolute position relative to window
+                    debtButtonRef.current?.measureInWindow((px: number, py: number, fwidth: number, fheight: number) => {
+                      console.log("Debt button layout:", { x: px, y: py, width: fwidth, height: fheight });
+                      setDebtButtonLayout({ 
+                        x: px, 
+                        y: py, 
+                        width: fwidth, 
+                        height: fheight 
+                      });
+                    });
+                  }}
                 >
                   <Ionicons name="card-outline" size={28} color="#1E3932" />
                   <Text style={styles.actionText}>Debt</Text>
@@ -1158,10 +1280,20 @@ const debtHealth = useMemo(() => {
         onSkip={skipOnboarding}
         onComplete={completeOnboarding}
         highlightPosition={
-          currentStep === 1 && addButtonLayout // Step 2 is "add_expense" (displayed as "2 / 6")
+          currentStep === 1 && addButtonLayout // Step 1 is "add_expense" (displayed as "2 / 8")
             ? {
                 ...addButtonLayout,
-                y: addButtonLayout.y + 50, // Offset down by 30px to move highlight lower
+                y: addButtonLayout.y + 50, // Offset down by 50px to move highlight lower
+              }
+            : currentStep === 4 && savingsButtonLayout // Step 4 is "savings_goals" (displayed as "5 / 8")
+            ? {
+                ...savingsButtonLayout,
+                y: savingsButtonLayout.y + 50, // Offset down by 50px to move highlight lower
+              }
+            : currentStep === 5 && debtButtonLayout // Step 5 is "manage_debt" (displayed as "6 / 8")
+            ? {
+                ...debtButtonLayout,
+                y: debtButtonLayout.y + 50, // Offset down by 50px to move highlight lower
               }
             : highlightPosition || undefined
         }

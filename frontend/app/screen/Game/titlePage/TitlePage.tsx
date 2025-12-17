@@ -210,11 +210,12 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     alignItems: "center",
     gap: 12,
-    marginTop: 170,
+    marginTop: 200,
     marginLeft: 20,
   },
   buttonContent: {
     width: "100%",
+    height: 25,
     alignItems: "center",
   },
   buttonPrimary: {
@@ -242,7 +243,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(20, 20, 20, 0.7)",
     borderWidth: 3,
     borderColor: "#fbbf24",
-    paddingVertical: 15,
+    paddingVertical: 10,
     paddingHorizontal: 40,
     borderRadius: 20,
     shadowColor: "#000",

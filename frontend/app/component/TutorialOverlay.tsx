@@ -216,8 +216,8 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     borderRadius: 12,
     borderWidth: 3,
-    borderColor: "#22C55E",
-    shadowColor: "#22C55E",
+    borderColor: "#115D59",
+    shadowColor: "#115D59",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
     shadowRadius: 10,
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
   nextButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#22C55E",
+    backgroundColor: "#115D59",
     paddingVertical: 14,
     paddingHorizontal: 24,
     borderRadius: 12,
@@ -306,10 +306,10 @@ const styles = StyleSheet.create({
   },
   progressDotActive: {
     width: 24,
-    backgroundColor: "#22C55E",
+    backgroundColor: "#115D59",
   },
   progressDotCompleted: {
-    backgroundColor: "#22C55E",
+    backgroundColor: "#115D59",
   },
 });
 

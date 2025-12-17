@@ -173,7 +173,7 @@ export default function SignIn() {
 
             <Text
               style={styles.link}
-              onPress={() => router.push("/screen/ForgetPassword")}
+              onPress={() => router.push("/screen/ForgotPassword")}
             >
               Forgot Password?
             </Text>

@@ -2236,6 +2236,261 @@ app.post("/api/email/resend-otp", async (req, res) => {
 });
 
 // ======================================================
+// 🔐 Password Reset Endpoints (OTP-based)
+// ======================================================
+
+/**
+ * POST /api/auth/request-password-reset
+ * Start password reset flow: look up user by email, generate OTP, send email
+ * Body: { email }
+ * Response (on success): { success: true, userId, username, testMode?, otpCode?, previewURL? }
+ */
+app.post("/api/auth/request-password-reset", async (req, res) => {
+  try {
+    const { email } = req.body || {};
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    if (!db) {
+      return res.status(500).json({ error: "Firestore not initialized on backend" });
+    }
+
+    // Find user document by email (same field used in Register screen)
+    const snap = await db
+      .collection("USERS")
+      .where("user_email", "==", email)
+      .limit(1)
+      .get();
+
+    if (snap.empty) {
+      return res.status(404).json({
+        error: "No account found with that email address",
+      });
+    }
+
+    const userDoc = snap.docs[0];
+    const userId = userDoc.id;
+    const userData = userDoc.data() || {};
+    const username = userData.username || "User";
+
+    // Ensure email transporter is ready (similar to send-verification)
+    if (!transporterInitialized) {
+      let waited = 0;
+      while (!transporterInitialized && waited < 2000) {
+        // wait up to 2 seconds
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        waited += 100;
+      }
+    }
+
+    if (!transporter || !transporterInitialized) {
+      return res.status(500).json({
+        error: "Email service not configured",
+        message: "Please wait a moment and try again, or check server logs",
+      });
+    }
+
+    // Reuse the same OTP email helper, but semantically for password reset
+    const result = await sendOTPEmail(email, userId, username);
+
+    const response = {
+      success: true,
+      message: "Password reset code sent successfully",
+      userId,
+      username,
+    };
+
+    // Include preview URL and OTP code in test mode
+    if (USE_TEST_EMAIL && result) {
+      if (result.previewURL) {
+        response.previewURL = result.previewURL;
+      }
+      if (result.otpCode) {
+        response.otpCode = result.otpCode;
+      }
+      response.testMode = true;
+    }
+
+    res.json(response);
+  } catch (error) {
+    console.error("❌ Error requesting password reset:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to start password reset process",
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/auth/verify-reset-otp
+ * Verify OTP code specifically for password reset (does NOT change emailVerified)
+ * Body: { userId, otpCode, email }
+ */
+app.post("/api/auth/verify-reset-otp", async (req, res) => {
+  try {
+    const { userId, otpCode } = req.body || {};
+
+    if (!userId || !otpCode) {
+      return res.status(400).json({ error: "UserId and OTP code are required" });
+    }
+
+    const otpData = otpStore.get(userId);
+
+    if (!otpData) {
+      return res.status(400).json({
+        error: "OTP not found or expired. Please request a new code.",
+      });
+    }
+
+    // Check if expired
+    if (new Date() > otpData.expiresAt) {
+      otpStore.delete(userId);
+      return res.status(400).json({
+        error: "OTP code has expired. Please request a new code.",
+      });
+    }
+
+    // Check attempts (max 5 attempts)
+    if (otpData.attempts >= 5) {
+      otpStore.delete(userId);
+      return res.status(400).json({
+        error: "Too many failed attempts. Please request a new code.",
+      });
+    }
+
+    // Verify OTP code
+    if (otpCode !== otpData.code) {
+      otpData.attempts = (otpData.attempts || 0) + 1;
+      otpStore.set(userId, otpData);
+      return res.status(400).json({
+        error: "Invalid OTP code",
+        attemptsRemaining: 5 - otpData.attempts,
+      });
+    }
+
+    // OTP verified successfully for password reset
+    otpStore.delete(userId);
+
+    return res.json({
+      success: true,
+      message: "OTP verified successfully for password reset",
+      userId,
+    });
+  } catch (error) {
+    console.error("❌ Error verifying reset OTP:", error);
+    res.status(500).json({
+      error: "Failed to verify OTP for password reset",
+      message: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Actually update the user's password after OTP verification
+ * Body: { email, userId, newPassword }
+ */
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const { email, userId, newPassword } = req.body || {};
+
+    if (!userId || !newPassword) {
+      return res.status(400).json({
+        error: "UserId and newPassword are required",
+      });
+    }
+
+    // Enforce same strength rule as frontend (Register / ResetPassword)
+    const strongPassword =
+      typeof newPassword === "string" &&
+      newPassword.length >= 8 &&
+      /[A-Z]/.test(newPassword) &&
+      /[a-z]/.test(newPassword) &&
+      /\d/.test(newPassword);
+
+    if (!strongPassword) {
+      return res.status(400).json({
+        error:
+          "Password must be at least 8 characters long and include upper, lower case letters and a number.",
+      });
+    }
+
+    // Check against previous password (if stored in USERS doc)
+    if (db) {
+      try {
+        const userDoc = await db.collection("USERS").doc(userId).get();
+        if (userDoc.exists) {
+          const userData = userDoc.data() || {};
+          const prevPassword = userData.user_password;
+          if (typeof prevPassword === "string" && prevPassword === newPassword) {
+            return res.status(400).json({
+              error: "New password cannot be the same as your previous password.",
+            });
+          }
+        }
+      } catch (checkError) {
+        console.warn(
+          "⚠️ Could not check previous password before reset:",
+          checkError
+        );
+        // Continue anyway; not critical enough to fail the whole request
+      }
+    }
+
+    // Update Firebase Auth password if admin is available
+    try {
+      if (admin && admin.auth) {
+        await admin.auth().updateUser(userId, { password: newPassword });
+      } else {
+        console.warn("⚠️ Firebase Admin Auth not available. Skipping auth password update.");
+      }
+    } catch (authError) {
+      console.error("❌ Error updating Firebase Auth password:", authError);
+      return res.status(500).json({
+        error: "Failed to update authentication password",
+        message: authError.message,
+      });
+    }
+
+    // Optionally update Firestore user document's stored password field for consistency
+    if (db) {
+      try {
+        const userRef = db.collection("USERS").doc(userId);
+        const updatePayload = {
+          user_password: newPassword,
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        // If email is provided, we can ensure it still matches
+        if (email) {
+          updatePayload.user_email = email;
+        }
+
+        await userRef.update(updatePayload);
+      } catch (firestoreError) {
+        console.error("⚠️ Password updated in Auth but failed to update Firestore:", firestoreError);
+        // Don't fail the whole request if Firestore update fails after auth success
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: "Password has been reset successfully",
+      userId,
+    });
+  } catch (error) {
+    console.error("❌ Error in /api/auth/reset-password:", error);
+    res.status(500).json({
+      error: "Failed to reset password",
+      message: error.message,
+    });
+  }
+});
+
+// ======================================================
 // 🚀 Start server
 // ======================================================
 const PORT = process.env.PORT || 3000;
