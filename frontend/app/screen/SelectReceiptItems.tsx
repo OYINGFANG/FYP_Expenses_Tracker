@@ -18,6 +18,9 @@ type ReceiptItem = {
   qty?: number;
   selected?: boolean;
   baseAmount?: number;
+  // Optional flag to mark discounts / subsidies so they
+  // subtract from the total instead of adding to it.
+  isDiscount?: boolean;
 };
 
 export default function SelectReceiptItems() {
@@ -44,9 +47,9 @@ export default function SelectReceiptItems() {
       const rawAmount: any = (item as any).amount; // This is the LINE TOTAL
       const rawUnitPrice: any = (item as any).unit_price; // This is the UNIT PRICE
       const ocrQuantity = (item as any).quantity;
-      
+
       const qty = typeof ocrQuantity === "number" && ocrQuantity > 0 ? ocrQuantity : 1;
-      
+
       // Determine unit price:
       // 1. If OCR provided unit_price, use it
       // 2. Otherwise, if amount is line total and qty > 1, divide amount by qty
@@ -58,13 +61,21 @@ export default function SelectReceiptItems() {
         const lineTotal = parseFloat(rawAmount != null ? String(rawAmount) : "0") || 0;
         unitPrice = qty > 1 && lineTotal > 0 ? lineTotal / qty : lineTotal;
       }
-      
+
+      // Heuristic: treat common discount/subsidy keywords as negative lines
+      const desc = (item as any).description || "";
+      const isDiscount = /subsidy|discount|rebate|voucher|coupon|promo|promotion/i.test(
+        desc
+      );
+      const signedUnitPrice = isDiscount ? -unitPrice : unitPrice;
+
       return {
         ...item,
-        amount: String(unitPrice.toFixed(2)), // Store unit price in amount field
-        baseAmount: unitPrice, // Store unit price in baseAmount
+        amount: String(signedUnitPrice.toFixed(2)), // Store (possibly signed) unit price in amount field
+        baseAmount: signedUnitPrice, // Store (possibly signed) unit price in baseAmount
         qty: qty, // Use detected quantity from OCR
         selected: true,
+        isDiscount,
       };
     })
   );

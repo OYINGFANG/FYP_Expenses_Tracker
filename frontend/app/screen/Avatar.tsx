@@ -47,7 +47,7 @@ type Message =
     };
 
 // const YOUR_COMPUTER_IP = "172.20.10.9";
-const YOUR_COMPUTER_IP = "192.168.100.100";
+const YOUR_COMPUTER_IP = "192.168.0.96";
 
 // For Android emulator, use 10.0.2.2. For real device or iOS, use your computer's IP
 const BASE_URL = Platform.OS === "android"

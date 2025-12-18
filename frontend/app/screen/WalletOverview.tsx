@@ -584,15 +584,9 @@ export default function Stats() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient colors={["#1E5449", "#154C42", "#0F3D35"] as const} style={StyleSheet.absoluteFill} />
-      <View style={styles.decorLayer}>
-        <View style={[styles.bubble, styles.bubbleA]} />
-        <View style={[styles.bubble, styles.bubbleB]} />
-      </View>
-
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={24} color="#fff" />
+          <Ionicons name="chevron-back" size={24} color="#1E3932" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Your Wallet</Text>
         <View style={{ width: 44 }} />
@@ -616,7 +610,7 @@ export default function Stats() {
                 router.push(
                   topCard.type === "expense"
                     ? "/screen/ExpensesDetail"
-                    : "/screen/IncomeOverview"
+                    : "/screen/IncomeDetail"
                 )
               }
             />
@@ -637,7 +631,7 @@ export default function Stats() {
                 router.push(
                   topCard.type === "income"
                     ? "/screen/ExpensesDetail"
-                    : "/screen/IncomeOverview"
+                    : "/screen/IncomeDetail"
                 )
               }
             />
@@ -652,8 +646,8 @@ export default function Stats() {
             ]}
           >
             <TouchableOpacity style={styles.exchangeBtn} onPress={handleExchange} activeOpacity={0.85}>
-              <LinearGradient colors={["#A7F3D0", "#6EE7B7"] as const} style={styles.exchangeBtnGradient}>
-                <Ionicons name="swap-vertical" size={24} color="#065F46" />
+            <LinearGradient colors={["#A7F3D0", "#6EE7B7"] as const} style={styles.exchangeBtnGradient}>
+            <Ionicons name="swap-vertical" size={24} color="#065F46" />
               </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
@@ -787,25 +781,7 @@ export default function Stats() {
 // STYLES
 // ============================================================================
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-
-  // Background
-  decorLayer: { ...StyleSheet.absoluteFillObject, overflow: "hidden" },
-  bubble: { position: "absolute", borderRadius: 1000, opacity: 0.06 },
-  bubbleA: {
-    width: SCREEN_WIDTH * 1.5,
-    height: SCREEN_WIDTH * 1.5,
-    backgroundColor: "#34D399",
-    top: -SCREEN_WIDTH * 0.7,
-    right: -SCREEN_WIDTH * 0.3,
-  },
-  bubbleB: {
-    width: SCREEN_WIDTH * 1.2,
-    height: SCREEN_WIDTH * 1.2,
-    backgroundColor: "#60A5FA",
-    bottom: -SCREEN_WIDTH * 0.6,
-    left: -SCREEN_WIDTH * 0.4,
-  },
+  container: { flex: 1, backgroundColor: "#E4F2ED" },
 
   // Header
   header: {
@@ -817,14 +793,12 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: { fontSize: 20, fontWeight: "800", color: "#fff" },
+  headerTitle: { fontSize: 22, fontWeight: "800", color: "#1E3932" },
   scrollContent: { paddingBottom: 36 },
 
   // Cards Container 
@@ -895,7 +869,7 @@ const styles = StyleSheet.create({
   },
 
   // Date Section
-  dateSection: { marginHorizontal: 20, marginBottom: 16 },
+  dateSection: { marginHorizontal: 20, marginBottom: 20 },
   dateNav: {
     flexDirection: "row",
     alignItems: "center",
@@ -903,10 +877,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 12,
-    marginBottom: 10,
+    marginBottom: 20,
     ...shadowStyle(2, 0.06),
   },
-  dateNavBtn: { width: 36, height: 18, borderRadius: 10, backgroundColor: "#F7FAF9", alignItems: "center", justifyContent: "center" },
+  dateNavBtn: { width: 36, height: 25, borderRadius: 10, backgroundColor: "#E4F2ED", alignItems: "center", justifyContent: "center" },
   dateText: { fontSize: 16, fontWeight: "700", color: "#1E3932" },
 
   // Period Filter

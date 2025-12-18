@@ -564,7 +564,7 @@ export default function ExpensesDetail() {
           >
             <Ionicons
               name={viewMode === "list" ? "analytics-outline" : "list-outline"}
-              size={20}
+              size={25}
               color={BRAND_DARK}
             />
           </TouchableOpacity>
@@ -573,26 +573,15 @@ export default function ExpensesDetail() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Summary */}
-        <LinearGradient
-          colors={["#FEF2F2", "#FFF7ED"]}
-          style={styles.summaryCard}
-        >
+        <View style={styles.summaryCard}>
           <View style={styles.summaryHeaderRow}>
             <View>
               <Text style={styles.summaryLabel}>Total Expenses</Text>
               <Text style={styles.summaryValue}>{formatCurrency(totalExpense, currency)}</Text>
             </View>
-            <View
-              style={[
-                styles.summaryPill,
-                { backgroundColor: "rgba(239, 68, 68, 0.12)" },
-              ]}
-            >
-              <Ionicons name="cash-outline" size={14} color={RED} />
-              <Text style={[styles.summaryPillText, { color: RED }]}>This month</Text>
-            </View>
+
           </View>
-        </LinearGradient>
+        </View>
 
         {/* Search & filters */}
         <View style={styles.filtersCard}>
@@ -697,8 +686,8 @@ export default function ExpensesDetail() {
         style={styles.fab}
         onPress={() => router.push("/screen/AddRecord")}
       >
-        <LinearGradient colors={["#22C55E", "#16A34A"]} style={styles.fabGrad}>
-          <Ionicons name="add" size={26} color="#ECFDF5" />
+        <LinearGradient colors={["#1E3932", "#0D2818"]} style={styles.fabGrad}>
+          <Ionicons name="add" size={28} color="#fff" />
         </LinearGradient>
       </TouchableOpacity>
 
@@ -841,7 +830,7 @@ export default function ExpensesDetail() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#E4F2ED",
   },
 
   content: {
@@ -850,9 +839,9 @@ const styles = StyleSheet.create({
 
   // App bar
   appBar: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 5,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -866,55 +855,68 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
+    marginTop: 20,
   },
   appBarCenter: {
     flex: 1,
     alignItems: "center",
   },
   appBarTitle: {
-    fontSize: 17,
+    fontSize: 22,
     fontWeight: "800",
     color: BRAND_DARK,
   },
   appBarMonthRow: {
-    marginTop: 4,
+    marginTop: 6,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
   },
   monthArrowBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 999,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#E5E7EB",
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   appBarMonth: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   appBarMonthText: {
     fontSize: 12,
-    fontWeight: "600",
-    color: MUTED,
+    fontWeight: "700",
+    color: BRAND_DARK,
   },
   appBarRight: {
     flexDirection: "row",
     gap: 8,
+    marginTop: 10,
   },
 
   // Summary
   summaryCard: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 20,
-    padding: 18,
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 22,
+    paddingLeft: 25,
+    padding: 15,
+    backgroundColor: CARD_BG,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   summaryHeaderRow: {
     flexDirection: "row",
@@ -928,11 +930,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   summaryValue: {
-    marginTop: 6,
-    fontSize: 30,
+    marginTop: 8,
+    fontSize: 32,
     fontWeight: "900",
     color: BRAND_DARK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
   },
   summaryPill: {
     flexDirection: "row",
@@ -949,24 +951,26 @@ const styles = StyleSheet.create({
 
   // Filters
   filtersCard: {
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderRadius: 18,
+    marginTop: 20,
+    marginHorizontal: 20,
+    borderRadius: 20,
     backgroundColor: CARD_BG,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   searchInput: {
     flex: 1,
@@ -1019,8 +1023,8 @@ const styles = StyleSheet.create({
     color: "#0B1120",
   },
   categoryChipsRow: {
-    gap: 8,
-    marginTop: 10,
+    gap: 10,
+    marginTop: 12,
   },
 
   chip: {
@@ -1051,18 +1055,18 @@ const styles = StyleSheet.create({
 
   // Category & insights cards
   categoryCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
+    marginHorizontal: 20,
+    marginTop: 20,
     backgroundColor: CARD_BG,
-    borderRadius: 20,
-    padding: 18,
-    ...shadow(2, 0.06),
+    borderRadius: 22,
+    padding: 22,
+    ...shadow(3, 0.1),
   },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 18,
   },
   cardTitle: {
     fontSize: 16,
@@ -1070,7 +1074,7 @@ const styles = StyleSheet.create({
     color: BRAND_DARK,
   },
   categoryRow: {
-    paddingVertical: 12,
+    paddingVertical: 14,
   },
   categoryLeft: {
     flexDirection: "row",
@@ -1110,40 +1114,41 @@ const styles = StyleSheet.create({
   },
 
   insightsCard: {
-    marginHorizontal: 16,
-    marginTop: 16,
+    marginHorizontal: 20,
+    marginTop: 20,
     backgroundColor: CARD_BG,
-    borderRadius: 20,
-    padding: 18,
-    ...shadow(2, 0.06),
+    borderRadius: 22,
+    padding: 15,
+    ...shadow(3, 0.1),
   },
   insightsGrid: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: 12,
+    gap: 10,
   },
   insightItem: {
     flex: 1,
-    backgroundColor: "#F7FAF9",
-    borderRadius: 14,
-    padding: 14,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 16,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   insightLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: MUTED,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   insightValue: {
-    fontSize: 18,
-    fontWeight: "900",
+    fontSize: 14,
+    fontWeight: "800",
     color: BRAND_DARK,
   },
   insightHighlight: {
-    marginTop: 14,
+    marginTop: 18,
     backgroundColor: "#FEF2F2",
     borderRadius: 12,
-    padding: 12,
+    padding: 14,
     borderLeftWidth: 3,
     borderLeftColor: RED,
   },
@@ -1161,20 +1166,20 @@ const styles = StyleSheet.create({
 
   // List
   listContainer: {
-    marginTop: 16,
-    marginHorizontal: 16,
-    marginBottom: 8,
+    marginTop: 20,
+    marginHorizontal: 20,
+    marginBottom: 12,
   },
   dayGroup: {
     backgroundColor: CARD_BG,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 12,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    marginBottom: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   dayHeaderRow: {
     flexDirection: "row",
@@ -1202,17 +1207,17 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: LINE_SOFT + "60",
+    borderBottomColor: LINE_SOFT + "40",
   },
   iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginRight: 16,
   },
   rowMid: {
     flex: 1,
@@ -1221,12 +1226,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: BRAND_DARK,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   rowSub: {
     fontSize: 12,
     color: MUTED,
-    marginTop: 2,
+    marginTop: 4,
   },
   rowRight: {
     alignItems: "flex-end",
@@ -1255,10 +1260,10 @@ const styles = StyleSheet.create({
 
   // Empty state
   emptyState: {
-    marginTop: 32,
-    borderRadius: 18,
+    marginTop: 40,
+    borderRadius: 20,
     backgroundColor: "#FFFFFF",
-    padding: 24,
+    padding: 32,
     alignItems: "center",
     shadowColor: "#000",
     shadowOpacity: 0.05,
@@ -1272,13 +1277,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 16,
     fontWeight: "800",
     color: BRAND_DARK,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   emptyText: {
     fontSize: 12,
@@ -1289,21 +1294,21 @@ const styles = StyleSheet.create({
   // FAB
   fab: {
     position: "absolute",
-    right: 18,
+    right: 25,
     bottom: 24,
-    shadowColor: "#22C55E",
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowColor: "#1E3932",
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
   fabGrad: {
-    width: 58,
-    height: 58,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "#DCFCE7",
+    borderWidth: 0,
   },
 
   // Modal

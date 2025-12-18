@@ -42,7 +42,6 @@ import { auth } from "../../firebase";
 import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
 
 /* ---------- Brand / UI ---------- */
-const BRAND_BG_GRADIENT = ["#1E5449", "#154C42", "#0F3D35"] as const;
 const BRAND_DARK = "#1E3932";
 const BRAND_GREEN = "#22C55E";
 const CARD_BG = "#FFFFFF";
@@ -310,7 +309,7 @@ function DebtRow({
 
       {/* Add Payment Button */}
       <TouchableOpacity onPress={onAddPayment} style={styles.addPaymentBtn}>
-        <Ionicons name="add-circle" size={18} color={BRAND_DARK} />
+        <Ionicons name="card-outline" size={18} color="#FFFFFF" />
         <Text style={styles.addPaymentText}>Record Payment</Text>
       </TouchableOpacity>
 
@@ -532,11 +531,13 @@ function PaymentModal({
   debt,
   onClose,
   onSave,
+  currency,
 }: {
   open: boolean;
   debt: Debt | null;
   onClose: () => void;
   onSave: (debtId: string, payment: Payment) => void;
+  currency: Currency;
 }) {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState<Date>(new Date());
@@ -715,6 +716,7 @@ export default function Debt() {
   const [currency, setCurrency] = useState<Currency>("MYR");
 
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
 
   // Filter states
   const [filterType, setFilterType] = useState<DebtType | "All">("All");
@@ -933,13 +935,9 @@ export default function Debt() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1 }}>
-        <LinearGradient
-          colors={BRAND_BG_GRADIENT}
-          style={StyleSheet.absoluteFill}
-        />
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: "#E4F2ED" }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
+          <ActivityIndicator size="large" color={BRAND_DARK} />
           <Text style={styles.loadingText}>Loading your debts…</Text>
         </View>
       </SafeAreaView>
@@ -949,45 +947,156 @@ export default function Debt() {
 
   /* ----- UI ----- */
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <LinearGradient colors={BRAND_BG_GRADIENT} style={StyleSheet.absoluteFill} />
-
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: "#E4F2ED" }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={22} color="#fff" />
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
         </TouchableOpacity>
-        <Text style={styles.title}>Debt Tracker</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Debt Tracker</Text>
+        </View>
         <TouchableOpacity onPress={openAdd} style={styles.headerBtn} activeOpacity={0.7}>
-          <Ionicons name="add" size={22} color="#fff" />
+          <Ionicons name="add" size={22} color={BRAND_DARK} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         {/* Health Score Card */}
-        <View style={styles.card}>
-          <View style={styles.scoreRow}>
-            <View style={[styles.scoreBadge, { 
-              borderColor: totals.healthScore >= 80 ? BRAND_GREEN + "33" : 
-                          totals.healthScore >= 60 ? ORANGE + "33" : RED + "33"
-            }]}>
-              <Text style={[styles.scoreNumber, {
-                color: totals.healthScore >= 80 ? BRAND_GREEN : 
-                       totals.healthScore >= 60 ? ORANGE : RED
-              }]}>{totals.healthScore}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.scoreLabel}>Debt Health Score</Text>
-              <Text style={[styles.scoreTag, { 
-                color: totals.healthScore >= 80 ? BRAND_GREEN : 
-                       totals.healthScore >= 60 ? ORANGE : RED 
+        <View style={styles.healthScoreCardContainer}>
+          <View style={styles.healthScoreCard}>
+            <View style={styles.scoreHeader}>
+              <View style={styles.scoreHeaderLeft}>
+                <View style={styles.scoreTitleRow}>
+                  <Text style={styles.scoreLabel}>Debt Health Score</Text>
+                </View>
+                <View style={styles.scoreStatusRow}>
+                  <View style={[styles.scoreStatusBadge, {
+                    backgroundColor: totals.healthScore >= 80 ? "#ECFDF5" : 
+                                     totals.healthScore >= 60 ? "#FFFBEB" : "#FEF2F2",
+                    borderColor: totals.healthScore >= 80 ? "#A7F3D0" : 
+                                 totals.healthScore >= 60 ? "#FDE68A" : "#FECACA"
+                  }]}>
+                    <Ionicons 
+                      name={totals.healthScore >= 80 ? "checkmark-circle" : 
+                            totals.healthScore >= 60 ? "checkmark-circle-outline" : "alert-circle"} 
+                      size={16} 
+                      color={totals.healthScore >= 80 ? "#059669" : 
+                             totals.healthScore >= 60 ? "#D97706" : "#DC2626"} 
+                    />
+                    <Text style={[styles.scoreTag, { 
+                      color: totals.healthScore >= 80 ? "#059669" : 
+                             totals.healthScore >= 60 ? "#D97706" : "#DC2626"
+                    }]}>
+                      {totals.healthScore >= 80 ? "Excellent" : 
+                       totals.healthScore >= 60 ? "Good" : "Needs Attention"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <View style={[styles.scoreBadge, {
+                backgroundColor: totals.healthScore >= 80 ? "#D1FAE5" : 
+                                 totals.healthScore >= 60 ? "#FEF3C7" : "#FEE2E2"
               }]}>
-                {totals.healthScore >= 80 ? "Excellent" : 
-                 totals.healthScore >= 60 ? "Good" : "Needs Attention"}
-              </Text>
+                <Text style={[styles.scoreNumber, {
+                  color: totals.healthScore >= 80 ? "#059669" : 
+                         totals.healthScore >= 60 ? "#D97706" : "#DC2626"
+                }]}>{totals.healthScore}</Text>
+              </View>
+            </View>
+
+            {/* Score Breakdown – collapsible */}
+            <View style={styles.subscores}>
+              <TouchableOpacity
+                style={styles.subscoresHeaderRow}
+                onPress={() => setShowBreakdown((prev) => !prev)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Ionicons name="information-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.subscoresTitle}>Score Breakdown</Text>
+                </View>
+
+                <View style={styles.subscoresToggle}>
+                  <Text style={styles.subscoresToggleText}>
+                    {showBreakdown ? "Hide" : "Show"}
+                  </Text>
+                  <Ionicons
+                    name={showBreakdown ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color="#FFFFFF"
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {showBreakdown && (
+                <>
+                  <View style={styles.breakdownInfo}>
+                    <Ionicons name="calculator-outline" size={16} color={BLUE} />
+                    <Text style={styles.breakdownInfoText}>
+                      Your score is calculated from 4 factors weighted by importance
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.factorsGrid}>
+                    <Subscore 
+                      icon="trending-down"
+                      label="Debt-to-Income" 
+                      weight={40}
+                      value={totals.subscores.sDTI}
+                      description="Monthly debt payments vs income"
+                      contribution={Math.round(0.40 * totals.subscores.sDTI)}
+                      isInGradient={false}
+                    />
+                    <Subscore 
+                      icon="checkmark-circle"
+                      label="Repayment Progress" 
+                      weight={30}
+                      value={totals.subscores.sProgress}
+                      description="How much debt you've paid off"
+                      contribution={Math.round(0.30 * totals.subscores.sProgress)}
+                      isInGradient={false}
+                    />
+                    <Subscore 
+                      icon="calendar"
+                      label="Payment Consistency" 
+                      weight={20}
+                      value={totals.subscores.sConsistency}
+                      description="Regular payments (last 3 months)"
+                      contribution={Math.round(0.20 * totals.subscores.sConsistency)}
+                      isInGradient={false}
+                    />
+                    <Subscore 
+                      icon="list"
+                      label="Number of Debts" 
+                      weight={10}
+                      value={totals.subscores.sCount}
+                      description="Total active debts"
+                      contribution={Math.round(0.10 * totals.subscores.sCount)}
+                      isInGradient={false}
+                    />
+                  </View>
+
+                  <View style={styles.calculationBox}>
+                    <View style={styles.calculationHeader}>
+                      <Ionicons name="calculator" size={18} color={BRAND_DARK} />
+                      <Text style={styles.calculationTitle}>Score Calculation</Text>
+                    </View>
+                    <View style={styles.calculationTotal}>
+                      <Text style={styles.calculationTotalLabel}>Total Score</Text>
+                      <Text style={[styles.calculationTotalValue, {
+                        color: totals.healthScore >= 80 ? BRAND_GREEN : 
+                               totals.healthScore >= 60 ? ORANGE : RED
+                      }]}>{totals.healthScore}</Text>
+                    </View>
+                  </View>
+                </>
+              )}
             </View>
           </View>
-
+        </View>
+        
+        <View style={styles.card}>
           {/* Key Metrics */}
           <View style={styles.metricsGrid}>
             <MetricCard
@@ -1015,111 +1124,6 @@ export default function Debt() {
               color={ORANGE}
             />
           </View>
-
-          {/* Score Breakdown – collapsible */}
-          <View style={styles.subscores}>
-            <TouchableOpacity
-              style={styles.subscoresHeaderRow}
-              onPress={() => setShowBreakdown((prev) => !prev)}
-              activeOpacity={0.7}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Ionicons name="information-circle" size={18} color={BLUE} />
-                <Text style={styles.subscoresTitle}>Score Breakdown</Text>
-              </View>
-
-              {/* "arrow down score breakdown" label + icon */}
-              <View style={styles.subscoresToggle}>
-                <Text style={styles.subscoresToggleText}>
-                  {showBreakdown ? "Hide" : "Show"}
-                </Text>
-                <Ionicons
-                  name={showBreakdown ? "chevron-up" : "chevron-down"}
-                  size={16}
-                  color={MUTED}
-                />
-              </View>
-            </TouchableOpacity>
-
-            {showBreakdown && (
-              <>
-                <View style={styles.breakdownInfo}>
-                  <Ionicons name="calculator-outline" size={16} color={BLUE} />
-                  <Text style={styles.breakdownInfoText}>
-                    Your score is calculated from 4 factors weighted by importance
-                  </Text>
-                </View>
-                
-                <View style={styles.factorsGrid}>
-                  <Subscore 
-                    icon="trending-down"
-                    label="Debt-to-Income" 
-                    weight={40}
-                    value={totals.subscores.sDTI}
-                    description="Monthly debt payments vs income"
-                    contribution={Math.round(0.40 * totals.subscores.sDTI)}
-                  />
-                  <Subscore 
-                    icon="checkmark-circle"
-                    label="Repayment Progress" 
-                    weight={30}
-                    value={totals.subscores.sProgress}
-                    description="How much debt you've paid off"
-                    contribution={Math.round(0.30 * totals.subscores.sProgress)}
-                  />
-                  <Subscore 
-                    icon="calendar"
-                    label="Payment Consistency" 
-                    weight={20}
-                    value={totals.subscores.sConsistency}
-                    description="Regular payments (last 3 months)"
-                    contribution={Math.round(0.20 * totals.subscores.sConsistency)}
-                  />
-                  <Subscore 
-                    icon="list"
-                    label="Number of Debts" 
-                    weight={10}
-                    value={totals.subscores.sCount}
-                    description="Total active debts"
-                    contribution={Math.round(0.10 * totals.subscores.sCount)}
-                  />
-                </View>
-
-                <View style={styles.calculationBox}>
-                  <View style={styles.calculationHeader}>
-                    <Ionicons name="calculator" size={18} color={BRAND_DARK} />
-                    <Text style={styles.calculationTitle}>Score Calculation</Text>
-                  </View>
-                  {/* <View style={styles.calculationSteps}>
-                    <View style={styles.calculationStep}>
-                      <Text style={styles.calculationStepLabel}>40% × {Math.round(totals.subscores.sDTI)}</Text>
-                      <Text style={styles.calculationStepValue}>+{Math.round(0.40 * totals.subscores.sDTI)}</Text>
-                    </View>
-                    <View style={styles.calculationStep}>
-                      <Text style={styles.calculationStepLabel}>30% × {Math.round(totals.subscores.sProgress)}</Text>
-                      <Text style={styles.calculationStepValue}>+{Math.round(0.30 * totals.subscores.sProgress)}</Text>
-                    </View>
-                    <View style={styles.calculationStep}>
-                      <Text style={styles.calculationStepLabel}>20% × {Math.round(totals.subscores.sConsistency)}</Text>
-                      <Text style={styles.calculationStepValue}>+{Math.round(0.20 * totals.subscores.sConsistency)}</Text>
-                    </View>
-                    <View style={styles.calculationStep}>
-                      <Text style={styles.calculationStepLabel}>10% × {Math.round(totals.subscores.sCount)}</Text>
-                      <Text style={styles.calculationStepValue}>+{Math.round(0.10 * totals.subscores.sCount)}</Text>
-                    </View>
-                  </View> */}
-                  {/* <View style={styles.calculationDivider} /> */}
-                  <View style={styles.calculationTotal}>
-                    <Text style={styles.calculationTotalLabel}>Total Score</Text>
-                    <Text style={[styles.calculationTotalValue, {
-                      color: totals.healthScore >= 80 ? BRAND_GREEN : 
-                             totals.healthScore >= 60 ? ORANGE : RED
-                    }]}>{totals.healthScore}</Text>
-                  </View>
-                </View>
-              </>
-            )}
-          </View>
         </View>
 
         {/* Priority Focus */}
@@ -1140,16 +1144,38 @@ export default function Debt() {
         {/* Suggestions */}
         {suggestions.length > 0 && (
           <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Ionicons name="bulb" size={18} color={ORANGE} />
-              <Text style={[styles.cardTitle, { color: ORANGE }]}>Recommendations</Text>
-            </View>
-            {suggestions.map((t, i) => (
-              <View key={i} style={styles.tipRow}>
-                <Ionicons name="checkmark-circle" size={16} color={BRAND_GREEN} />
-                <Text style={styles.tipText}>{t}</Text>
+            <TouchableOpacity
+              style={styles.recommendationsHeaderRow}
+              onPress={() => setShowRecommendations((prev) => !prev)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="bulb" size={18} color={ORANGE} />
+                <Text style={[styles.cardTitle, { color: ORANGE }]}>Recommendations</Text>
               </View>
-            ))}
+
+              <View style={styles.recommendationsToggle}>
+                <Text style={styles.recommendationsToggleText}>
+                  {showRecommendations ? "Hide" : "Show"}
+                </Text>
+                <Ionicons
+                  name={showRecommendations ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color={MUTED}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {showRecommendations && (
+              <>
+                {suggestions.map((t, i) => (
+                  <View key={i} style={styles.tipRow}>
+                    <Ionicons name="checkmark-circle" size={16} color={BRAND_GREEN} />
+                    <Text style={styles.tipText}>{t}</Text>
+                  </View>
+                ))}
+              </>
+            )}
           </View>
         )}
 
@@ -1244,6 +1270,7 @@ export default function Debt() {
         debt={paymentDebt}
         onClose={() => setPaymentModalOpen(false)}
         onSave={savePayment}
+        currency={currency}
       />
 
       {/* Filter & Sort Modal */}
@@ -1330,10 +1357,12 @@ function MetricCard({ icon, label, value, color }: {
 }) {
   return (
     <View style={styles.metricCard}>
-      <View style={[styles.metricIcon, { backgroundColor: color + "22" }]}>
-        <Ionicons name={icon} size={18} color={color} />
+      <View style={styles.metricHeaderRow}>
+        <View style={[styles.metricIcon, { backgroundColor: color + "22" }]}>
+          <Ionicons name={icon} size={12} color={color} />
+        </View>
+        <Text style={styles.metricLabel}>{label}</Text>
       </View>
-      <Text style={styles.metricLabel}>{label}</Text>
       <Text style={[styles.metricValue, { color }]}>{value}</Text>
     </View>
   );
@@ -1346,7 +1375,8 @@ function Subscore({
   weight,
   value, 
   description, 
-  contribution 
+  contribution,
+  isInGradient = false
 }: { 
   icon?: string;
   label: string;
@@ -1354,35 +1384,42 @@ function Subscore({
   value: number;
   description?: string;
   contribution?: number;
+  isInGradient?: boolean;
 }) {
   const color = value >= 80 ? BRAND_GREEN : value >= 60 ? ORANGE : RED;
+  const textColor = isInGradient ? "#FFFFFF" : BRAND_DARK;
+  const mutedColor = isInGradient ? "rgba(255, 255, 255, 0.8)" : MUTED;
+  
   return (
-    <View style={styles.subscoreCard}>
+    <View style={[styles.subscoreCard, isInGradient && styles.subscoreCardInGradient]}>
       <View style={styles.subscoreHeader}>
-        <View style={[styles.subscoreIconContainer, { backgroundColor: color + "15" }]}>
-          {icon && <Ionicons name={icon as any} size={18} color={color} />}
+        <View style={[styles.subscoreIconContainer, { backgroundColor: isInGradient ? "rgba(255, 255, 255, 0.2)" : color + "15" }]}>
+          {icon && <Ionicons name={icon as any} size={16} color={isInGradient ? "#FFFFFF" : color} />}
         </View>
         <View style={styles.subscoreHeaderText}>
-          <Text style={styles.subscoreLabel}>{label}</Text>
-          <Text style={styles.subscoreWeight}>{weight}% weight</Text>
+          <Text style={[styles.subscoreLabel, isInGradient && { color: textColor }]}>{label}</Text>
+          <Text style={[styles.subscoreWeight, isInGradient && { color: mutedColor }]}>{weight}% weight</Text>
         </View>
-        <View style={[styles.subscoreBadge, { backgroundColor: color + "20" }]}>
-          <Text style={[styles.subscoreValue, { color }]}>{Math.round(value)}</Text>
+        <View style={[styles.subscoreBadge, { backgroundColor: isInGradient ? "rgba(255, 255, 255, 0.25)" : color + "20" }]}>
+          <Text style={[styles.subscoreValue, { color: isInGradient ? "#FFFFFF" : color }]}>{Math.round(value)}</Text>
         </View>
       </View>
       
       {description && (
-        <Text style={styles.subscoreDescription}>{description}</Text>
+        <Text style={[styles.subscoreDescription, isInGradient && { color: mutedColor }]}>{description}</Text>
       )}
       
       <View style={styles.subscoreProgressContainer}>
-        <View style={[styles.subscoreProgressBar, { width: `${value}%`, backgroundColor: color }]} />
+        <View style={[styles.subscoreProgressBar, { 
+          width: `${value}%`, 
+          backgroundColor: isInGradient ? "rgba(255, 255, 255, 0.4)" : color 
+        }]} />
       </View>
       
       {contribution !== undefined && (
         <View style={styles.subscoreContributionContainer}>
-          <Text style={styles.subscoreContributionLabel}>Contribution:</Text>
-          <Text style={[styles.subscoreContributionValue, { color }]}>+{contribution} points</Text>
+          <Text style={[styles.subscoreContributionLabel, isInGradient && { color: mutedColor }]}>Contribution:</Text>
+          <Text style={[styles.subscoreContributionValue, { color: isInGradient ? "#FFFFFF" : color }]}>+{contribution} points</Text>
         </View>
       )}
     </View>
@@ -1391,6 +1428,9 @@ function Subscore({
 
 /* ---------- Styles ---------- */
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   header: {
     paddingHorizontal: 16,
     paddingTop: 8,
@@ -1403,11 +1443,18 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { color: BRAND_DARK, fontSize: 18, fontWeight: "800" },
 
   subscoresHeaderRow: {
     flexDirection: "row",
@@ -1420,18 +1467,30 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   subscoresToggleText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: "700",
-    color: MUTED,
+    color: "#FFFFFF",
   },
 
+  healthScoreCardContainer: {
+    marginHorizontal: 16,
+    marginTop: 16,
+  },
+  healthScoreCard: {
+    backgroundColor: "#115D59",
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
   card: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: CARD_BG,
-    padding: 16,
-    ...shadow(3, 0.08),
+    padding: 15,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
 
   section: {
@@ -1439,27 +1498,29 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   sectionTitle: {
-    color: "#fff",
-    fontSize: 16,
+    color: BRAND_DARK,
+    fontSize: 18,
     fontWeight: "800",
   },
   filterButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: 12,
   },
   filterButtonText: {
-    color: "#fff",
+    color: BRAND_DARK,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -1525,8 +1586,23 @@ const styles = StyleSheet.create({
   cardHeader: { 
     flexDirection: "row", 
     alignItems: "center", 
-    gap: 8, 
-    marginBottom: 12 
+    gap: 8,  
+  },
+  recommendationsHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 0,
+  },
+  recommendationsToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  recommendationsToggleText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: MUTED,
   },
   cardTitle: { 
     fontSize: 16, 
@@ -1534,32 +1610,71 @@ const styles = StyleSheet.create({
     color: BRAND_DARK 
   },
 
-  scoreRow: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    marginBottom: 16, 
-    gap: 12 
+  scoreHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 0,
+  },
+  scoreHeaderLeft: {
+    flex: 1,
+  },
+  scoreTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+  },
+  scoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 12
   },
   scoreBadge: {
-    width: 80, 
-    height: 80, 
-    borderRadius: 40,
-    backgroundColor: "#F7FAF9", 
-    alignItems: "center", 
+    width: 60,
+    height: 60,
+    borderRadius: 16,
+    alignItems: "center",
     justifyContent: "center",
-    borderWidth: 5,
+    borderWidth: 2,
+    borderColor: "transparent",
   },
-  scoreNumber: { 
-    fontSize: 32, 
-    fontWeight: "900", 
-    letterSpacing: -1 
+  scoreNumber: {
+    fontSize: 28,
+    fontWeight: "900",
+    letterSpacing: -1
+  },
+  scoreStatusRow: {
+    marginBottom: 0,
+    marginTop: 0,
+  },
+  scoreStatusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1.5,
   },
   scoreLabel: { 
     fontWeight: "800", 
-    color: BRAND_DARK,
+    color: "#FFFFFF",
+    fontSize: 15,
+  },
+  scoreLabelWhite: { 
+    fontWeight: "800", 
+    color: "#FFFFFF",
     fontSize: 15,
   },
   scoreTag: { 
+    fontWeight: "800", 
+    marginTop: 2,
+    fontSize: 13,
+  },
+  scoreTagWhite: { 
     fontWeight: "800", 
     marginTop: 2,
     fontSize: 13,
@@ -1568,32 +1683,38 @@ const styles = StyleSheet.create({
   metricsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 12,
+    gap: 12,
   },
   metricCard: {
     flex: 1,
     minWidth: "47%",
-    backgroundColor: "#F7FAF9",
-    borderRadius: 12,
-    padding: 12,
-  },
-  metricIcon: {
-    width: 36,
-    height: 36,
+    backgroundColor: "#F0FDF4",
     borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
   },
-  metricLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: MUTED,
+  metricHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     marginBottom: 4,
   },
+  metricIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  metricLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: MUTED,
+    flex: 1,
+  },
   metricValue: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: "900",
   },
 
@@ -1620,18 +1741,29 @@ const styles = StyleSheet.create({
   },
 
   subscores: { 
-    marginTop: 12, 
+    marginTop: 5, 
     gap: 10 
   },
   subscoresTitle: {
     fontSize: 13,
     fontWeight: "800",
-    color: BRAND_DARK,
+    color: "#FFFFFF",
     marginBottom: 4,
+    marginTop: 8,
+  },
+  subscoresTitleWhite: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  subscoresToggleTextWhite: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
   factorsGrid: {
-    gap: 12,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 12,
   },
   subscoreCard: {
     backgroundColor: CARD_BG,
@@ -1641,6 +1773,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E7EB",
     ...shadow(1, 0.05),
+  },
+  subscoreCardInGradient: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderColor: "rgba(255, 255, 255, 0.25)",
+    ...shadow(0, 0),
   },
   subscoreHeader: {
     flexDirection: "row",
@@ -1733,6 +1870,24 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 18,
   },
+  breakdownInfoWhite: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  breakdownInfoTextWhite: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "600",
+    flex: 1,
+    lineHeight: 16,
+  },
   calculationBox: {
     backgroundColor: "#FAFBFC",
     borderRadius: 16,
@@ -1742,15 +1897,28 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
     ...shadow(1, 0.05),
   },
+  calculationBoxWhite: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
   calculationHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   calculationTitle: {
     color: BRAND_DARK,
     fontSize: 15,
+    fontWeight: "800",
+  },
+  calculationTitleWhite: {
+    color: "#FFFFFF",
+    fontSize: 14,
     fontWeight: "800",
   },
   calculationSteps: {
@@ -1794,8 +1962,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
   },
+  calculationTotalLabelWhite: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "800",
+  },
   calculationTotalValue: {
     fontSize: 20,
+    fontWeight: "900",
+  },
+  calculationTotalValueWhite: {
+    fontSize: 18,
     fontWeight: "900",
   },
 
@@ -1828,11 +2005,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: "#F7FAF9",
-    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
     marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
   },
   tipText: {
     flex: 1,
@@ -1846,9 +2025,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 12,
     backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 14,
-    ...shadow(2, 0.06),
+    borderRadius: 18,
+    padding: 18,
+    ...shadow(3, 0.1),
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   debtHeader: {
     flexDirection: "row",
@@ -1879,10 +2060,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: "#F7FAF9",
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
   },
 
   progressSection: {
@@ -1908,10 +2091,12 @@ const styles = StyleSheet.create({
 
   balanceSection: {
     flexDirection: "row",
-    backgroundColor: "#F7FAF9",
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
   },
   balanceItem: {
     flex: 1,
@@ -1937,11 +2122,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: "#F7FAF9",
-    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   timelineText: {
     fontSize: 12,
@@ -2025,8 +2212,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     backgroundColor: BRAND_DARK,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
+    ...shadow(2, 0.15),
   },
   addPaymentText: {
     color: "#fff",
@@ -2057,10 +2245,10 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end" 
   },
   modalCard: {
-    backgroundColor: "#fff",
+    backgroundColor: "#E4F2ED",
     borderTopLeftRadius: 20, 
     borderTopRightRadius: 20,
-    padding: 16, 
+    padding: 20, 
     maxHeight: "85%",
   },
   modalHeader: { 
@@ -2157,7 +2345,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    color: "#E5E7EB",
+    color: BRAND_DARK,
     fontSize: 14,
     fontWeight: "600",
   },

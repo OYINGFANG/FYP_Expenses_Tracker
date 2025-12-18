@@ -1,4 +1,4 @@
-// IncomeOverview.tsx
+// IncomeDetail.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -26,12 +26,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { auth } from "../../firebase";
 
 /** ---------- Visual constants ---------- */
-const BRAND_DARK = "#020617";
-const BRAND_GREEN = "#16A34A";
+const BRAND_DARK = "#1E3932";
+const BRAND_GREEN = "#22C55E";
 const CARD_BG = "#FFFFFF";
 const LINE_SOFT = "#E5E7EB";
 const MUTED = "#6B7280";
 const ACCENT_PURPLE = "#8B5CF6";
+const RED = "#EF4444";
 
 /** ---------- Categories ---------- */
 const INCOME_CATEGORY_ORDER = [
@@ -120,6 +121,133 @@ function Chip({
   );
 }
 
+/** ---------- Income Insights ---------- */
+function IncomeInsights({
+  incomes,
+  monthKey,
+  currency,
+}: {
+  incomes: IncomeRecord[];
+  monthKey: string;
+  currency: Currency;
+}) {
+  const insights = useMemo(() => {
+    if (incomes.length === 0) return null;
+
+    const total = incomes.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+    const [y, m] = monthKey.split("-").map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const avgPerDay = daysInMonth ? total / daysInMonth : 0;
+
+    const byDay: Record<string, number> = {};
+    incomes.forEach((r) => {
+      const d = new Date(r.dateISO);
+      const key = `${d.getDate()}`;
+      byDay[key] = (byDay[key] || 0) + (Number(r.amount) || 0);
+    });
+
+    const entries = Object.entries(byDay);
+    const maxDay = entries.sort((a, b) => b[1] - a[1])[0];
+
+    return {
+      avgPerDay,
+      highestDay: maxDay ? { day: maxDay[0], amount: maxDay[1] } : null,
+      transactionCount: incomes.length,
+      total,
+    };
+  }, [incomes, monthKey]);
+
+  if (!insights) return null;
+
+  return (
+    <View style={styles.insightsCard}>
+      <View style={styles.cardHeader}>
+        <Ionicons name="bulb" size={18} color={ACCENT_PURPLE} />
+        <Text style={[styles.cardTitle, { color: ACCENT_PURPLE }]}>Income Insights</Text>
+      </View>
+
+      <View style={styles.insightsGrid}>
+        <View style={styles.insightItem}>
+          <Text style={styles.insightLabel}>Daily Average</Text>
+          <Text style={styles.insightValue}>{formatCurrency(insights.avgPerDay, currency)}</Text>
+        </View>
+        <View style={styles.insightItem}>
+          <Text style={styles.insightLabel}>Transactions</Text>
+          <Text style={styles.insightValue}>{insights.transactionCount}</Text>
+        </View>
+        <View style={styles.insightItem}>
+          <Text style={styles.insightLabel}>Total Income</Text>
+          <Text style={styles.insightValue}>{formatCurrency(insights.total, currency)}</Text>
+        </View>
+      </View>
+
+      {insights.highestDay && (
+        <View style={styles.insightHighlight}>
+          <View style={styles.insightHighlightRow}>
+            <Ionicons name="trending-up" size={16} color={BRAND_GREEN} />
+            <Text style={styles.insightHighlightText}>
+              Highest income on day {insights.highestDay.day}:{" "}
+              {formatCurrency(insights.highestDay.amount, currency)}
+            </Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+/** ---------- Category Breakdown ---------- */
+function IncomeCategoryBreakdown({ incomes, currency }: { incomes: IncomeRecord[]; currency: Currency }) {
+  const categoryData = useMemo(() => {
+    const totals: Record<string, number> = {};
+    incomes.forEach((r) => {
+      const cat = (r.category && INCOME_CATEGORY_ORDER.includes(r.category as any)
+        ? r.category
+        : "Others") as string;
+      totals[cat] = (totals[cat] || 0) + (Number(r.amount) || 0);
+    });
+
+    const total = Object.values(totals).reduce((s, v) => s + v, 0);
+    return Object.entries(totals)
+      .map(([cat, amt]) => ({
+        category: cat as (typeof INCOME_CATEGORY_ORDER)[number],
+        amount: amt,
+        percentage: total > 0 ? (amt / total) * 100 : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [incomes]);
+
+  if (!categoryData.length) return null;
+
+  return (
+    <View style={styles.categoryCard}>
+      <View style={styles.cardHeader}>
+        <Ionicons name="pie-chart" size={18} color={BRAND_DARK} />
+        <Text style={styles.cardTitle}>Top Income Categories</Text>
+      </View>
+
+      {categoryData.map((item, idx) => {
+        const color = INCOME_CATEGORY_COLORS[item.category];
+        return (
+          <View key={item.category} style={styles.categoryRow}>
+            <View style={styles.categoryLeft}>
+              <View style={[styles.categoryDot, { backgroundColor: color }]} />
+              <Text style={styles.categoryName}>{item.category}</Text>
+            </View>
+            <View style={styles.categoryRight}>
+              <Text style={styles.categoryAmount}>{formatCurrency(item.amount, currency)}</Text>
+              <Text style={styles.categoryPercent}>{item.percentage.toFixed(1)}%</Text>
+            </View>
+            {idx < categoryData.length - 1 && <View style={styles.categoryDivider} />}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 /** ---------- Row ---------- */
 function IncomeRow({
   r,
@@ -150,7 +278,7 @@ function IncomeRow({
       onLongPress={onLongPress}
     >
       <View style={[styles.iconWrap, { backgroundColor: color + "15" }]}>
-        <Ionicons name={icon} size={20} color={color} />
+        <Ionicons name={icon} size={22} color={color} />
       </View>
 
       <View style={styles.rowMid}>
@@ -178,7 +306,7 @@ function IncomeRow({
 }
 
 /** ---------- Main Screen ---------- */
-export default function IncomeOverview() {
+export default function IncomeDetail() {
   const router = useRouter();
 
   const [monthKey, setMonthKey] = useState<string>(getCurrentMonthKey());
@@ -186,6 +314,7 @@ export default function IncomeOverview() {
   const [currency, setCurrency] = useState<Currency>("MYR");
   const [userId, setUserId] = useState<string | null>(null);
 
+  const [viewMode, setViewMode] = useState<"list" | "insights">("list");
   const [search, setSearch] = useState("");
   const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
   const [method, setMethod] = useState<(typeof METHODS)[number]>("All");
@@ -354,7 +483,7 @@ export default function IncomeOverview() {
     return (
       <SafeAreaView style={styles.screen}>
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <ActivityIndicator size="large" color={BRAND_GREEN} />
+          <ActivityIndicator size="large" color={BRAND_DARK} />
         </View>
       </SafeAreaView>
     );
@@ -380,11 +509,11 @@ export default function IncomeOverview() {
               style={styles.monthArrowBtn}
               activeOpacity={0.7}
             >
-              <Ionicons name="chevron-back" size={14} color={MUTED} />
+              <Ionicons name="chevron-back" size={16} color={BRAND_DARK} />
             </TouchableOpacity>
 
             <View style={styles.appBarMonth}>
-              <Ionicons name="calendar-outline" size={14} color={MUTED} />
+              <Ionicons name="calendar-outline" size={14} color={BRAND_DARK} />
               <Text style={styles.appBarMonthText}>{monthKeyToLabel(monthKey)}</Text>
             </View>
 
@@ -393,38 +522,36 @@ export default function IncomeOverview() {
               style={styles.monthArrowBtn}
               activeOpacity={0.7}
             >
-              <Ionicons name="chevron-forward" size={14} color={MUTED} />
+              <Ionicons name="chevron-forward" size={16} color={BRAND_DARK} />
             </TouchableOpacity>
           </View>
         </View>
 
         <View style={styles.appBarRight}>
-          {/* Reserved for future actions */}
+          <TouchableOpacity
+            style={styles.appBarIconBtn}
+            activeOpacity={0.7}
+            onPress={() => setViewMode((v) => (v === "list" ? "insights" : "list"))}
+          >
+            <Ionicons
+              name={viewMode === "list" ? "analytics-outline" : "list-outline"}
+              size={28}
+              color={BRAND_DARK}
+            />
+          </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Summary */}
-        <LinearGradient
-          colors={["#ECFEFF", "#F0FDF4"]}
-          style={styles.summaryCard}
-        >
+        <View style={styles.summaryCard}>
           <View style={styles.summaryHeaderRow}>
             <View>
               <Text style={styles.summaryLabel}>Total Income</Text>
               <Text style={styles.summaryValue}>{formatCurrency(totalIncome, currency)}</Text>
             </View>
-            <View
-              style={[
-                styles.summaryPill,
-                { backgroundColor: "rgba(22, 163, 74, 0.12)" },
-              ]}
-            >
-              <Ionicons name="cash-outline" size={14} color={BRAND_GREEN} />
-              <Text style={styles.summaryPillText}>This month</Text>
-            </View>
           </View>
-        </LinearGradient>
+        </View>
 
         {/* Search & filters */}
         <View style={styles.filtersCard}>
@@ -479,41 +606,48 @@ export default function IncomeOverview() {
           </ScrollView>
         </View>
 
-        {/* List */}
-        <View style={styles.listContainer}>
-          {grouped.length === 0 ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconWrap}>
-                <Ionicons name="wallet-outline" size={42} color="#9CA3AF" />
-              </View>
-              <Text style={styles.emptyTitle}>No income</Text>
-              <Text style={styles.emptyText}>
-                Add a new income record to see it here.
-              </Text>
-            </View>
-          ) : (
-            grouped.map((g) => (
-              <View key={g.dayKey} style={styles.dayGroup}>
-                <View style={styles.dayHeaderRow}>
-                  <Text style={styles.dayHeaderText}>{g.header}</Text>
-                  <View style={styles.dayTotalPill}>
-                    <Text style={styles.dayTotalText}>+{formatCurrency(g.dayTotal, currency)}</Text>
-                  </View>
+        {/* Mode: insights or list */}
+        {viewMode === "insights" ? (
+          <>
+            <IncomeInsights incomes={filteredIncomes} monthKey={monthKey} currency={currency} />
+            <IncomeCategoryBreakdown incomes={filteredIncomes} currency={currency} />
+          </>
+        ) : (
+          <View style={styles.listContainer}>
+            {grouped.length === 0 ? (
+              <View style={styles.emptyState}>
+                <View style={styles.emptyIconWrap}>
+                  <Ionicons name="wallet-outline" size={42} color="#9CA3AF" />
                 </View>
-                {g.items.map((r) => (
-                  <IncomeRow
-                    key={r.id || r.dateISO + String(r.amount)}
-                    r={r}
-                    currency={currency}
-                    balanceAfter={r.id ? runningBalanceById[r.id] : undefined}
-                    onPress={() => openRecord(r)}
-                    onLongPress={() => openRecord(r)}
-                  />
-                ))}
+                <Text style={styles.emptyTitle}>No income</Text>
+                <Text style={styles.emptyText}>
+                  Add a new income record to see it here.
+                </Text>
               </View>
-            ))
-          )}
-        </View>
+            ) : (
+              grouped.map((g) => (
+                <View key={g.dayKey} style={styles.dayGroup}>
+                  <View style={styles.dayHeaderRow}>
+                    <Text style={styles.dayHeaderText}>{g.header}</Text>
+                    <View style={styles.dayTotalPill}>
+                      <Text style={styles.dayTotalText}>+{formatCurrency(g.dayTotal, currency)}</Text>
+                    </View>
+                  </View>
+                  {g.items.map((r) => (
+                    <IncomeRow
+                      key={r.id || r.dateISO + String(r.amount)}
+                      r={r}
+                      currency={currency}
+                      balanceAfter={r.id ? runningBalanceById[r.id] : undefined}
+                      onPress={() => openRecord(r)}
+                      onLongPress={() => openRecord(r)}
+                    />
+                  ))}
+                </View>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Floating Add button */}
@@ -522,8 +656,8 @@ export default function IncomeOverview() {
         style={styles.fab}
         onPress={() => router.push("/screen/AddRecord")}
       >
-        <LinearGradient colors={["#22C55E", "#16A34A"]} style={styles.fabGrad}>
-          <Ionicons name="add" size={26} color="#ECFDF5" />
+        <LinearGradient colors={["#1E3932", "#0D2818"]} style={styles.fabGrad}>
+          <Ionicons name="add" size={28} color="#fff" />
         </LinearGradient>
       </TouchableOpacity>
 
@@ -641,8 +775,8 @@ export default function IncomeOverview() {
                     style={[styles.modalBtn, styles.modalBtnGhost]}
                     onPress={handleDelete}
                   >
-                    <Ionicons name="trash" size={16} color="#EF4444" />
-                    <Text style={[styles.modalBtnText, { color: "#EF4444" }]}>Delete</Text>
+                    <Ionicons name="trash" size={16} color={RED} />
+                    <Text style={[styles.modalBtnText, { color: RED }]}>Delete</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalBtn, styles.modalBtnPrimary]}
@@ -661,11 +795,22 @@ export default function IncomeOverview() {
   );
 }
 
+/** ---------- Shadow Helper ---------- */
+function shadow(height: number, opacity: number) {
+  return {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height },
+    shadowOpacity: opacity,
+    shadowRadius: height * 2,
+    elevation: height + 2,
+  };
+}
+
 /** ---------- Styles ---------- */
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#E4F2ED",
   },
   content: {
     paddingBottom: 120,
@@ -673,9 +818,9 @@ const styles = StyleSheet.create({
 
   // App bar
   appBar: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -689,55 +834,67 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
+    marginTop: 20,
   },
   appBarCenter: {
     flex: 1,
     alignItems: "center",
   },
   appBarTitle: {
-    fontSize: 17,
+    fontSize: 22,
     fontWeight: "800",
     color: BRAND_DARK,
   },
   appBarMonthRow: {
-    marginTop: 4,
+    marginTop: 6,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
   },
   monthArrowBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 999,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#E5E7EB",
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   appBarMonth: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   appBarMonthText: {
     fontSize: 12,
-    fontWeight: "600",
-    color: "#4B5563",
+    fontWeight: "700",
+    color: BRAND_DARK,
   },
   appBarRight: {
     flexDirection: "row",
     gap: 8,
+    marginTop: 5,
   },
 
-  // Summary hero
+  // Summary
   summaryCard: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    borderRadius: 20,
-    padding: 18,
+    marginHorizontal: 20,
+    marginTop: 5,
+    borderRadius: 22,
+    padding: 22,
+    backgroundColor: CARD_BG,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   summaryHeaderRow: {
     flexDirection: "row",
@@ -751,11 +908,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   summaryValue: {
-    marginTop: 6,
-    fontSize: 30,
+    marginTop: 10,
+    fontSize: 32,
     fontWeight: "900",
     color: BRAND_DARK,
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
   },
   summaryPill: {
     flexDirection: "row",
@@ -768,110 +925,271 @@ const styles = StyleSheet.create({
   summaryPillText: {
     fontSize: 12,
     fontWeight: "700",
-    color: BRAND_GREEN,
   },
 
   // Filters
   filtersCard: {
-    marginTop: 16,
-    marginHorizontal: 16,
-    borderRadius: 18,
+    marginTop: 20,
+    marginHorizontal: 20,
+    borderRadius: 20,
     backgroundColor: CARD_BG,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
     shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3,
   },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 999,
-    backgroundColor: "#F3F4F6",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   searchInput: {
     flex: 1,
     paddingHorizontal: 8,
     color: BRAND_DARK,
+    fontSize: 13,
   },
   clearBtn: {
-    padding: 4,
+    paddingLeft: 4,
   },
   filtersRow: {
-    marginTop: 10,
+    marginTop: 12,
     flexDirection: "column",
     alignItems: "flex-start",
-    gap: 8,
+    gap: 10,
   },
   categoryChipsRow: {
-    gap: 8,
-    marginTop: 10,
+    gap: 10,
+    marginTop: 12,
   },
 
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 999,
     borderWidth: 1,
   },
-  chipCompact: { paddingVertical: 6 },
-  chipInactive: { backgroundColor: "#fff", borderColor: LINE_SOFT },
-  chipActive: { backgroundColor: BRAND_DARK, borderColor: BRAND_DARK },
-  chipText: { fontSize: 12, fontWeight: "700", color: BRAND_DARK },
-  chipTextActive: { color: "#fff" },
+  chipCompact: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  chipInactive: {
+    backgroundColor: "#fff",
+    borderColor: LINE_SOFT,
+  },
+  chipActive: {
+    backgroundColor: BRAND_DARK,
+    borderColor: BRAND_DARK,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: BRAND_DARK,
+  },
+  chipTextActive: {
+    color: "#fff",
+  },
+
+  // Category & insights cards
+  categoryCard: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    backgroundColor: CARD_BG,
+    borderRadius: 22,
+    padding: 22,
+    ...shadow(3, 0.1),
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 18,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  categoryRow: {
+    paddingVertical: 14,
+  },
+  categoryLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 6,
+  },
+  categoryDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  categoryName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: BRAND_DARK,
+  },
+  categoryRight: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  categoryAmount: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  categoryPercent: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: MUTED,
+  },
+  categoryDivider: {
+    height: 1,
+    backgroundColor: LINE_SOFT,
+    marginTop: 14,
+  },
+
+  insightsCard: {
+    marginHorizontal: 20,
+    marginTop: 20,
+    backgroundColor: CARD_BG,
+    borderRadius: 22,
+    padding: 15,
+    ...shadow(3, 0.1),
+  },
+  insightsGrid: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  insightItem: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 16,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  insightLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: MUTED,
+    marginBottom: 8,
+  },
+  insightValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  insightHighlight: {
+    marginTop: 18,
+    backgroundColor: "#D1FAE5",
+    borderRadius: 12,
+    padding: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: BRAND_GREEN,
+  },
+  insightHighlightRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  insightHighlightText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: BRAND_DARK,
+    flex: 1,
+  },
 
   // List
-  listContainer: { marginTop: 16, marginHorizontal: 16, marginBottom: 8 },
+  listContainer: {
+    marginTop: 20,
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
   dayGroup: {
     backgroundColor: CARD_BG,
-    borderRadius: 18,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 12,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    marginBottom: 16,
     shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   dayHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: 14,
   },
-  dayHeaderText: { fontSize: 14, fontWeight: "800", color: BRAND_DARK },
+  dayHeaderText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
   dayTotalPill: {
-    backgroundColor: "rgba(22, 163, 74, 0.1)",
+    backgroundColor: "#D1FAE5",
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
   },
-  dayTotalText: { fontSize: 13, fontWeight: "800", color: BRAND_GREEN },
+  dayTotalText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: BRAND_GREEN,
+  },
 
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: LINE_SOFT + "60",
+    borderBottomColor: LINE_SOFT + "40",
   },
   iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginRight: 16,
   },
-  rowMid: { flex: 1 },
-  rowTitle: { fontSize: 15, fontWeight: "700", color: BRAND_DARK, marginBottom: 2 },
-  rowSub: { fontSize: 12, color: MUTED, marginTop: 2 },
-  rowRight: { alignItems: "flex-end" },
-  rowAmount: { fontSize: 14, fontWeight: "800" },
-  rowBalanceText: { fontSize: 11, fontWeight: "600", color: MUTED, marginTop: 2 },
+  rowMid: {
+    flex: 1,
+  },
+  rowTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: BRAND_DARK,
+    marginBottom: 4,
+  },
+  rowSub: {
+    fontSize: 12,
+    color: MUTED,
+    marginTop: 4,
+  },
+  rowRight: {
+    alignItems: "flex-end",
+  },
+  rowAmount: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  rowBalanceText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: MUTED,
+    marginTop: 2,
+  },
   paymentBadge: {
     backgroundColor: "#F3F4F6",
     paddingHorizontal: 8,
@@ -879,14 +1197,18 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     marginTop: 2,
   },
-  paymentText: { fontSize: 11, fontWeight: "600", color: MUTED },
+  paymentText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: MUTED,
+  },
 
   // Empty state
   emptyState: {
-    marginTop: 32,
-    borderRadius: 18,
+    marginTop: 40,
+    borderRadius: 20,
     backgroundColor: "#FFFFFF",
-    padding: 24,
+    padding: 32,
     alignItems: "center",
     shadowColor: "#000",
     shadowOpacity: 0.05,
@@ -900,29 +1222,38 @@ const styles = StyleSheet.create({
     backgroundColor: "#F3F4F6",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  emptyTitle: { fontSize: 16, fontWeight: "800", color: BRAND_DARK, marginBottom: 4 },
-  emptyText: { fontSize: 12, color: MUTED, textAlign: "center" },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: BRAND_DARK,
+    marginBottom: 6,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: MUTED,
+    textAlign: "center",
+  },
 
   // FAB
   fab: {
     position: "absolute",
-    right: 18,
+    right: 20,
     bottom: 24,
-    shadowColor: "#22C55E",
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
+    shadowColor: "#1E3932",
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
   },
   fabGrad: {
-    width: 58,
-    height: 58,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "#DCFCE7",
+    borderWidth: 0,
   },
 
   // Modal

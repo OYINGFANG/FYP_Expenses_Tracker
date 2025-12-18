@@ -36,7 +36,6 @@ import { syncSavingsReminderForGoal, cancelSavingsReminder } from "../utils/savi
 import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
 
 /* ---------- Brand / UI ---------- */
-const BRAND_BG_GRADIENT = ["#1E5449", "#154C42", "#0F3D35"] as const;
 const BRAND_DARK = "#1E3932";
 const BRAND_GREEN = "#22C55E";
 const CARD_BG = "#FFFFFF";
@@ -192,7 +191,7 @@ function GoalRow({
       {/* Add Contribution Button */}
       {!isCompleted && (
       <TouchableOpacity onPress={onAddContribution} style={styles.addContributionBtn}>
-        <Ionicons name="add-circle" size={18} color={BRAND_DARK} />
+        <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
         <Text style={styles.addContributionText}>Add Contribution</Text>
       </TouchableOpacity>
       )}
@@ -809,10 +808,9 @@ export default function Savings() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1 }}>
-        <LinearGradient colors={BRAND_BG_GRADIENT} style={StyleSheet.absoluteFill} />
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: "#E4F2ED" }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
+          <ActivityIndicator size="large" color={BRAND_DARK} />
           <Text style={styles.loadingText}>Loading your savings goals…</Text>
         </View>
       </SafeAreaView>
@@ -820,58 +818,64 @@ export default function Savings() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <LinearGradient colors={BRAND_BG_GRADIENT} style={StyleSheet.absoluteFill} />
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: "#E4F2ED" }]}>
 
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={22} color="#fff" />
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
         </TouchableOpacity>
-        <View>
+        <View style={styles.headerCenter}>
           <Text style={styles.title}>Savings & Goals</Text>
           <Text style={styles.subtitle}>Track your progress</Text>
         </View>
         <TouchableOpacity onPress={openAdd} style={styles.headerBtn} activeOpacity={0.7}>
-          <Ionicons name="add" size={22} color="#fff" />
+          <Ionicons name="add" size={22} color={BRAND_DARK} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         {/* Summary Card */}
-        <View style={styles.card}>
-          <View style={styles.summaryHeader}>
-            <Ionicons name="wallet" size={24} color={BRAND_DARK} />
-            <Text style={styles.summaryTitle}>Total Savings</Text>
-          </View>
-
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Saved</Text>
-              <Text style={[styles.summaryValue, { color: BRAND_GREEN }]}>{formatCurrency(stats.totalCurrent, currency)}</Text>
+        <View style={styles.summaryCardContainer}>
+          <LinearGradient
+            colors={["#115D59", "#0D4A46", "#0A3D39"]}
+            style={styles.summaryCard}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={styles.summaryHeader}>
+              <Ionicons name="wallet" size={24} color="#FFFFFF" />
+              <Text style={styles.summaryTitle}>Total Savings</Text>
             </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Target</Text>
-              <Text style={styles.summaryValue}>{formatCurrency(stats.totalTarget, currency)}</Text>
-            </View>
-          </View>
 
-          {stats.totalTarget > 0 && (
-            <>
-              <View style={styles.summaryProgressBar}>
-                <View
-                  style={[
-                    styles.summaryProgressFill,
-                    { width: `${Math.min(stats.overallProgress, 100)}%`, backgroundColor: BRAND_GREEN },
-                  ]}
-                />
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Saved</Text>
+                <Text style={styles.summaryValueWhite}>{formatCurrency(stats.totalCurrent, currency)}</Text>
               </View>
-              <Text style={styles.summaryProgressText}>
-                {Math.round(stats.overallProgress)}% complete • {formatCurrency(stats.totalRemaining, currency)} remaining
-              </Text>
-            </>
-          )}
+              <View style={styles.summaryDividerWhite} />
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Target</Text>
+                <Text style={styles.summaryValueWhite}>{formatCurrency(stats.totalTarget, currency)}</Text>
+              </View>
+            </View>
+
+            {stats.totalTarget > 0 && (
+              <>
+                <View style={styles.summaryProgressBar}>
+                  <View
+                    style={[
+                      styles.summaryProgressFill,
+                      { width: `${Math.min(stats.overallProgress, 100)}%`, backgroundColor: "#C9EAD6" },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.summaryProgressTextWhite}>
+                  {Math.round(stats.overallProgress)}% complete • {formatCurrency(stats.totalRemaining, currency)} remaining
+                </Text>
+              </>
+            )}
+          </LinearGradient>
         </View>
 
         {/* Achievements Section */}
@@ -976,6 +980,9 @@ export default function Savings() {
 
 /* ---------- Styles ---------- */
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   header: {
     paddingHorizontal: 16,
     paddingTop: 8,
@@ -988,65 +995,88 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800" },
-  subtitle: { color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 2 },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { color: BRAND_DARK, fontSize: 18, fontWeight: "800" },
+  subtitle: { color: MUTED, fontSize: 12, marginTop: 2, textAlign: "center" },
 
   card: {
     marginHorizontal: 16,
     marginTop: 16,
-    borderRadius: 18,
+    borderRadius: 20,
     backgroundColor: CARD_BG,
-    padding: 16,
-    ...shadow(3, 0.08),
+    padding: 20,
+    ...shadow(3, 0.12),
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
 
   section: {
-    marginTop: 16,
+    marginTop: 20,
   },
   sectionHeader: {
     paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   sectionTitle: {
-    color: "#fff",
-    fontSize: 16,
+    color: BRAND_DARK,
+    fontSize: 18,
     fontWeight: "800",
   },
   toggleButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
   },
   toggleButtonText: {
-    color: "#fff",
-    fontSize: 14,
+    color: BRAND_DARK,
+    fontSize: 13,
     fontWeight: "700",
-    opacity: 0.9,
   },
 
+  summaryCardContainer: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 20,
+    overflow: "hidden",
+    ...shadow(4, 0.15),
+  },
+  summaryCard: {
+    padding: 20,
+    borderRadius: 20,
+  },
   summaryHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 16,
+    gap: 10,
+    marginBottom: 18,
   },
   summaryTitle: {
     fontWeight: "800",
-    color: BRAND_DARK,
-    fontSize: 15,
+    color: "#C9EAD6",
+    fontSize: 16,
   },
   summaryRow: {
     flexDirection: "row",
-    backgroundColor: "#F7FAF9",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
   },
   summaryItem: {
     flex: 1,
@@ -1056,27 +1086,37 @@ const styles = StyleSheet.create({
     backgroundColor: LINE_SOFT,
     marginHorizontal: 12,
   },
+  summaryDividerWhite: {
+    width: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    marginHorizontal: 12,
+  },
   summaryLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
-    color: MUTED,
-    marginBottom: 4,
+    color: "#C9EAD6",
+    marginBottom: 6,
   },
   summaryValue: {
     fontSize: 18,
     fontWeight: "900",
     color: BRAND_DARK,
   },
+  summaryValueWhite: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#E8F5E9",
+  },
   summaryProgressBar: {
-    height: 8,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 4,
+    height: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 5,
     overflow: "hidden",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   summaryProgressFill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 5,
   },
   summaryProgressText: {
     fontSize: 12,
@@ -1084,18 +1124,26 @@ const styles = StyleSheet.create({
     color: BRAND_DARK,
     textAlign: "center",
   },
+  summaryProgressTextWhite: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#C9EAD6",
+    textAlign: "center",
+  },
 
   goalCard: {
     marginHorizontal: 16,
     marginBottom: 12,
     backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 14,
-    ...shadow(2, 0.06),
+    borderRadius: 18,
+    padding: 18,
+    ...shadow(3, 0.1),
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   goalCardCompleted: {
-    backgroundColor: "#ECFDF3",
-    borderWidth: 1,
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1.5,
     borderColor: "#86EFAC",
   },
   goalHeader: {
@@ -1137,21 +1185,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: "#F7FAF9",
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
   },
 
   progressSection: {
     marginBottom: 12,
   },
   progressBar: {
-    height: 8,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 4,
+    height: 10,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 5,
     overflow: "hidden",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   progressFill: {
     height: "100%",
@@ -1166,10 +1216,12 @@ const styles = StyleSheet.create({
 
   infoSection: {
     flexDirection: "row",
-    backgroundColor: "#F7FAF9",
-    borderRadius: 12,
-    padding: 12,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
   },
   infoItem: {
     flex: 1,
@@ -1195,11 +1247,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: "#F7FAF9",
-    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   timelineText: {
     fontSize: 12,
@@ -1214,8 +1268,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     backgroundColor: BRAND_DARK,
-    paddingVertical: 10,
-    borderRadius: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
+    ...shadow(2, 0.15),
   },
   addContributionText: {
     color: "#fff",
@@ -1225,19 +1280,20 @@ const styles = StyleSheet.create({
 
   empty: {
     alignItems: "center",
-    paddingVertical: 32,
-    gap: 8,
+    paddingVertical: 40,
+    gap: 12,
   },
   emptyTitle: {
     color: BRAND_DARK,
     fontWeight: "900",
-    fontSize: 16,
+    fontSize: 18,
   },
   emptyText: {
     color: MUTED,
     fontWeight: "600",
     textAlign: "center",
     paddingHorizontal: 20,
+    fontSize: 14,
   },
 
   modalWrap: {
@@ -1247,17 +1303,17 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   modalCard: {
-    backgroundColor: "#fff",
+    backgroundColor: "#E4F2ED",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 16,
+    padding: 20,
     maxHeight: "85%",
   },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   modalTitle: {
     fontWeight: "900",
@@ -1344,7 +1400,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    color: "#E5E7EB",
+    color: BRAND_DARK,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -1358,26 +1414,32 @@ const styles = StyleSheet.create({
     width: 100,
     alignItems: "center",
     backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 12,
-    marginRight: 8,
-    ...shadow(2, 0.06),
+    borderRadius: 18,
+    padding: 14,
+    marginRight: 10,
+    ...shadow(3, 0.1),
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
   badgeCardLocked: {
-    opacity: 0.5,
+    opacity: 0.6,
+    backgroundColor: "#F9FAFB",
   },
   badgeIconContainer: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#F0FDF4",
+    backgroundColor: "#D1FAE5",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
+    marginBottom: 10,
     position: "relative",
+    borderWidth: 2,
+    borderColor: "#A7F3D0",
   },
   badgeIconContainerLocked: {
     backgroundColor: "#F3F4F6",
+    borderColor: "#E5E7EB",
   },
   badgeLockOverlay: {
     position: "absolute",

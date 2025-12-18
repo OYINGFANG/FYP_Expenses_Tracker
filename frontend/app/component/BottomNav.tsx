@@ -27,9 +27,9 @@ const BottomNav = () => {
       // Make the highlight box wider for the Wallet tab
       setHighlightPosition({
         ...walletTabLayout,
-        width: walletTabLayout.width + 30, // Increase width by 40px
-        height: walletTabLayout.height + 30,
-        x: walletTabLayout.x - 15, // Shift left by 20px to center the wider box
+        width: walletTabLayout.width + 25, // Increase width by 30px
+        height: walletTabLayout.height + 25,
+        x: walletTabLayout.x - 12, // Shift left by 15px to center the wider box
         y: walletTabLayout.y - 15,
       });
     } else if (isOnboardingActive && currentStep === 3 && auriTabLayout) {
@@ -37,20 +37,20 @@ const BottomNav = () => {
       // Make the highlight box bigger for the Auri AI tab
       setHighlightPosition({
         ...auriTabLayout,
-        height: auriTabLayout.height + 65, // Increase height by 65px
-        width: auriTabLayout.width - 5, // Decrease width by 10px to make it smaller
-        y: auriTabLayout.y - 20, // Shift up by 20px to center the taller box
-        x: auriTabLayout.x + 3, // Shift right by 5px to center the narrower box
+        height: auriTabLayout.height + 32, // Increase height by 65px
+        width: auriTabLayout.width - 5, // Decrease width by 5px to make it smaller
+        y: auriTabLayout.y - 28, // Shift up by 20px to center the taller box
+        x: auriTabLayout.x + 3, // Shift right by 3px to center the narrower box
       });
     } else if (isOnboardingActive && currentStep === 6 && gamesTabLayout) {
       console.log("Setting Games tab highlight position:", gamesTabLayout);
       // Make the highlight box wider for the Games tab
       setHighlightPosition({
         ...gamesTabLayout,
-        width: gamesTabLayout.width + 30, // Increase width by 30px
-        height: gamesTabLayout.height + 30,
-        x: gamesTabLayout.x - 15, // Shift left by 15px to center the wider box
-        y: gamesTabLayout.y - 10,
+        width: gamesTabLayout.width + 25, // Increase width by 30px
+        height: gamesTabLayout.height + 22,
+        x: gamesTabLayout.x - 12, // Shift left by 15px to center the wider box
+        y: gamesTabLayout.y - 12,
       });
     } else if (!isOnboardingActive) {
       setHighlightPosition(null);
@@ -60,8 +60,10 @@ const BottomNav = () => {
   return (
     <View style={styles.container}>
       {/* Home */}
-      <TouchableOpacity style={styles.tab} onPress={() => router.push("/screen/ExpensesDetail")}>
-        <FontAwesome name="home" size={32} color="#fff" />
+      <TouchableOpacity style={styles.tab} onPress={() => router.push("/screen/Home")}>
+        <View style={styles.iconWrapper}>
+          <FontAwesome name="home" size={24} color="#fff" />
+        </View>
         <Text style={styles.label}>Home</Text>
       </TouchableOpacity>
 
@@ -76,15 +78,16 @@ const BottomNav = () => {
           }
           router.push("/screen/WalletOverview");
         }}
-        onLayout={(event) => {
-          const { x, y, width, height } = event.nativeEvent.layout;
+        onLayout={() => {
           walletTabRef.current?.measureInWindow((px, py, fwidth, fheight) => {
             console.log("Wallet tab layout:", { x: px, y: py, width: fwidth, height: fheight });
             setWalletTabLayout({ x: px, y: py, width: fwidth, height: fheight });
           });
         }}
       >
-        <FontAwesome5 name="history" size={25} color="#fff" />
+        <View style={styles.iconWrapper}>
+          <FontAwesome5 name="history" size={22} color="#fff" />
+        </View>
         <Text style={styles.label}>Wallet</Text>
       </TouchableOpacity>
 
@@ -99,8 +102,7 @@ const BottomNav = () => {
           }
           router.push("/screen/Avatar");
         }}
-        onLayout={(event) => {
-          const { x, y, width, height } = event.nativeEvent.layout;
+        onLayout={() => {
           auriTabRef.current?.measureInWindow((px, py, fwidth, fheight) => {
             console.log("Auri AI tab layout:", { x: px, y: py, width: fwidth, height: fheight });
             setAuriTabLayout({ x: px, y: py, width: fwidth, height: fheight });
@@ -129,8 +131,7 @@ const BottomNav = () => {
           }
           router.push("/screen/Game/titlePage/TitlePage");
         }}
-        onLayout={(event) => {
-          const { x, y, width, height } = event.nativeEvent.layout;
+        onLayout={() => {
           // Get absolute position relative to window
           gamesTabRef.current?.measureInWindow((px: number, py: number, fwidth: number, fheight: number) => {
             console.log("Games tab layout:", { x: px, y: py, width: fwidth, height: fheight });
@@ -143,13 +144,17 @@ const BottomNav = () => {
           });
         }}
       >
-        <Ionicons name="game-controller" size={32} color="#fff" />
+        <View style={styles.iconWrapper}>
+          <Ionicons name="game-controller" size={24} color="#fff" />
+        </View>
         <Text style={styles.label}>Games</Text>
       </TouchableOpacity>
 
       {/* Account */}
       <TouchableOpacity style={styles.tab} onPress={() => router.push("/screen/Profile")}>
-        <MaterialCommunityIcons name="account-box" size={33} color="#fff" />
+        <View style={styles.iconWrapper}>
+          <MaterialCommunityIcons name="account-box" size={26} color="#fff" />
+        </View>
         <Text style={styles.label}>Account</Text>
       </TouchableOpacity>
     </View>
@@ -164,32 +169,53 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "#115D59",
-    height: 80,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    height: 70,
+    borderRadius: 40,
     position: "absolute",
-    bottom: 0,
-    width: "100%",
+    bottom: 22,
+    left: "2.5%",
+    width: "95%",
     paddingHorizontal: 25,
-    paddingBottom: 6,
+
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: -4,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 15,
   },
   tab: {
     alignItems: "center",
     justifyContent: "center",
   },
+  iconWrapper: {
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   label: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 4,
     color: "#fff",
+    fontWeight: "500",
   },
   historyTab: {
-    marginTop: 6,
+    marginTop: 2,
   },
   centerLabel: {
-    fontSize: 17,
-    fontWeight: "bold",
+    fontSize: 15,
+    fontWeight: "600",
     color: "#fff",
-    marginTop: -3,
+    marginBottom: 6,
   },
   centerButton: {
     alignItems: "center",
@@ -197,19 +223,27 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   centerIcon: {
-    width: 85,
-    height: 85,
-    borderRadius: 42.5,
+    width: 78,
+    height: 78,
+    borderRadius: 40,
     backgroundColor: "#C7E59E",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 8,
+    borderWidth: 6,
     borderColor: "#115D59",
-    overflow: "hidden",        // 🔑 clip image to the circle
+    overflow: "hidden",
+    shadowColor: "#C7E59E",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 10,
   },
   centerIconImage: {
-    width: "160%",               // make it big but with a tiny margin
-    height: "160%",
+    width: "155%",
+    height: "155%",
     resizeMode: "contain",
   },
 });

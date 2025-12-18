@@ -525,9 +525,9 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   amountLabelAlt: { fontSize: 13, color: "#C9EAD6", fontWeight: "600", textAlign: "center" },
-  amountDisplayAlt: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", marginTop: 6 },
-  currencySymbolAlt: { fontSize: 20, color: "#fff", fontWeight: "600", marginRight: 8 },
-  amountValueAlt: { fontSize: 44, color: "#fff", fontWeight: "700" },
+  amountDisplayAlt: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 16 },
+  currencySymbolAlt: { fontSize: 20, color: "#fff", fontWeight: "600", marginRight: 8, lineHeight: 44 },
+  amountValueAlt: { fontSize: 44, color: "#fff", fontWeight: "700", lineHeight: 44 },
 
   // Section card wrapper
   sectionCard: {

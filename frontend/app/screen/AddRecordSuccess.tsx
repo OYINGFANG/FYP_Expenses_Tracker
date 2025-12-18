@@ -1,32 +1,71 @@
-import React, { useEffect, useRef } from "react";
-import { SafeAreaView, View, Text, StyleSheet, TouchableOpacity, Animated } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  SafeAreaView,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  ScrollView,
+} from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-
-function formatCurrency(v?: string | number) {
-  const n = typeof v === "string" ? parseFloat(v) : v ?? 0;
-  if (!isFinite(n)) return "RM 0.00";
-  return "RM " + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { subscribeUserCurrency, getCachedCurrency, formatCurrency as formatCurrencyUtil, type Currency } from "../utils/currencyUtils";
 
 function formatDateTime(iso?: string) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleString([], { 
-    day: "2-digit", 
-    month: "short", 
-    year: "numeric",
-    hour: "2-digit", 
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+
+  if (isToday) {
+    return "Today • " + d.toLocaleString("en-MY", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
+
+  return d.toLocaleString("en-MY", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
     minute: "2-digit",
-    hour12: false 
+    hour12: true,
   });
+}
+
+function DetailRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: any;
+  label: string;
+  value?: string;
+}) {
+  return (
+    <View style={styles.detailRow}>
+      <View style={styles.detailLeft}>
+        <View style={styles.detailIconContainer}>
+          <Ionicons name={icon} size={18} color="#1E3932" />
+        </View>
+        <Text style={styles.detailLabel}>{label}</Text>
+      </View>
+      <Text style={styles.detailValue} numberOfLines={1}>
+        {value?.trim() ? value : "—"}
+      </Text>
+    </View>
+  );
 }
 
 export default function AddRecordSuccess() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const [currency, setCurrency] = useState<Currency>("MYR");
 
   const getParam = (key: string): string | undefined => {
     const val = (params as any)[key];
@@ -42,17 +81,54 @@ export default function AddRecordSuccess() {
   const note = getParam("note");
 
   const isIncome = type === "Income";
-  const accent = isIncome ? "#10B981" : "#EF4444";
 
-  // Simple scale animation for the checkmark
-  const scaleAnim = useRef(new Animated.Value(0.5)).current;
+  // Load user's currency preference
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    const loadCurrency = async () => {
+      try {
+        // First try to get cached currency for immediate display
+        const cachedCurrency = await getCachedCurrency();
+        setCurrency(cachedCurrency);
+
+        // Then subscribe to Firestore for real-time updates
+        const userId = await AsyncStorage.getItem("userId");
+        if (userId) {
+          // Extract UID if it's a path (handle both "/USERS/uid" and "uid" formats)
+          const parts = userId.split("/");
+          const uid = userId.startsWith("/USERS/") && parts.length >= 3 ? parts[2] : userId;
+          unsubscribe = subscribeUserCurrency(uid, (newCurrency) => {
+            setCurrency(newCurrency);
+          });
+        }
+      } catch (error) {
+        console.error("Error loading currency:", error);
+        // Default to MYR if there's an error
+        setCurrency("MYR");
+      }
+    };
+
+    loadCurrency();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, []);
+
+  // Animations
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const checkScale = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.spring(scaleAnim, {
         toValue: 1,
-        friction: 6,
+        friction: 8,
         tension: 100,
         useNativeDriver: true,
       }),
@@ -61,306 +137,377 @@ export default function AddRecordSuccess() {
         duration: 400,
         useNativeDriver: true,
       }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        friction: 9,
+        tension: 80,
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.delay(150),
+        Animated.spring(checkScale, {
+          toValue: 1,
+          tension: 120,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]),
     ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const successColor = isIncome ? "#22C55E" : "#1E3932";
+  const gradientColors: readonly [string, string, ...string[]] = isIncome
+    ? ["#D1FAE5", "#A7F3D0"]
+    : ["#FEE2E2", "#FECACA"];
+
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push("/screen/Home")} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={26} color="#1F2937" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {isIncome ? "Income" : "Expense"} Added
-        </Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      {/* Main Content - No ScrollView for compact design */}
-      <View style={styles.content}>
-        {/* Success Card */}
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              opacity: fadeAnim,
-              transform: [{ scale: scaleAnim }],
-            },
-          ]}
-        >
-          {/* Success Badge */}
-          <View style={[styles.badge, { backgroundColor: accent }]}>
-            <MaterialIcons name="check" size={48} color="#fff" />
-          </View>
-
-          {/* Success Message */}
-          <Text style={styles.successTitle}>
-            {isIncome ? "Income" : "Expense"} saved!
-          </Text>
-
-          {/* Amount */}
-          <Text 
-            style={styles.amount} 
-            numberOfLines={1} 
-            adjustsFontSizeToFit
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => router.push("/screen/Home")}
+            style={styles.backBtn}
+            activeOpacity={0.7}
           >
-            {formatCurrency(amount)}
-          </Text>
+            <Ionicons name="close" size={24} color="#1E3932" />
+          </TouchableOpacity>
+        </View>
 
-          {/* Details Grid */}
-          <View style={styles.detailsGrid}>
-            <DetailItem
-              icon="pricetag-outline"
-              label="Category"
-              value={category || "—"}
-            />
-            <DetailItem
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Success Icon */}
+          <Animated.View
+            style={[
+              styles.successContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
+            <Animated.View
+              style={[
+                styles.checkCircle,
+                {
+                  backgroundColor: successColor,
+                  transform: [{ scale: checkScale }],
+                },
+              ]}
+            >
+              <Ionicons name="checkmark" size={40} color="#fff" />
+            </Animated.View>
+            <Text style={styles.successTitle}>
+              {isIncome ? "Income" : "Expense"} Recorded!
+            </Text>
+            <Text style={styles.successSubtitle}>
+              Your transaction has been saved successfully
+            </Text>
+          </Animated.View>
+
+          {/* Amount Card */}
+          <Animated.View
+            style={[
+              styles.amountCard,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={gradientColors}
+              style={styles.amountCardGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={[styles.amountValue, { color: isIncome ? "#1E3932" : "#DC2626" }]}>
+                {formatCurrencyUtil(parseFloat(amount || "0") || 0, currency)}
+              </Text>
+            </LinearGradient>
+          </Animated.View>
+
+          {/* Details Card */}
+          <Animated.View
+            style={[
+              styles.detailsCard,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <Text style={styles.detailsTitle}>Transaction Details</Text>
+
+            <DetailRow
               icon="calendar-outline"
-              label="Date"
+              label="Date & Time"
               value={formatDateTime(dateISO)}
             />
-            <DetailItem
+
+            <DetailRow
+              icon="pricetag-outline"
+              label="Category"
+              value={category}
+            />
+
+            <DetailRow
               icon="card-outline"
-              label="Payment"
-              value={paymentMethod || "—"}
+              label="Payment Method"
+              value={paymentMethod}
             />
-            <DetailItem
-              icon={isIncome ? "trending-up-outline" : "trending-down-outline"}
-              label="Type"
-              value={type}
-            />
-          </View>
 
-          {/* Note if exists */}
-          {!!note && (
-            <View style={styles.noteContainer}>
-              <Ionicons name="create-outline" size={16} color="#6B7280" />
-              <Text style={styles.noteText} numberOfLines={2}>
-                {note}
-              </Text>
-            </View>
-          )}
+            {note && note.trim() && (
+              <View style={styles.noteSection}>
+                <View style={styles.noteHeader}>
+                  <Ionicons name="document-text-outline" size={18} color="#1E3932" />
+                  <Text style={styles.noteLabel}>Note</Text>
+                </View>
+                <Text style={styles.noteText}>{note}</Text>
+              </View>
+            )}
+          </Animated.View>
 
-          {/* Primary Button */}
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => router.push("/screen/Home")}
-            activeOpacity={0.8}
+          {/* Action Buttons */}
+          <Animated.View
+            style={[
+              styles.actionsContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
           >
-            <Text style={styles.primaryBtnText}>Back to Home</Text>
-          </TouchableOpacity>
-
-          {/* Secondary Buttons */}
-          <View style={styles.secondaryBtnsRow}>
             <TouchableOpacity
-              style={styles.secondaryBtn}
-              onPress={() => router.push("/screen/AddRecord")}
-              activeOpacity={0.7}
+              style={styles.primaryBtn}
+              onPress={() => router.push("/screen/Home")}
+              activeOpacity={0.8}
             >
-              <Ionicons name="add-circle-outline" size={20} color="#1F2937" />
-              <Text style={styles.secondaryBtnText}>Add another</Text>
+              <Ionicons name="checkmark-circle" size={20} color="#fff" />
+              <Text style={styles.primaryBtnText}>Done</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.secondaryBtn}
-              onPress={() => router.push("/screen/ExpensesDetail")}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="file-tray-full-outline" size={20} color="#1F2937" />
-              <Text style={styles.secondaryBtnText}>View records</Text>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
+            <View style={styles.secondaryBtns}>
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => router.push("/screen/AddRecord")}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add-circle-outline" size={18} color="#1E3932" />
+                <Text style={styles.secondaryBtnText}>Add Another</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => router.push("/screen/ExpensesDetail")}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="list-outline" size={18} color="#1E3932" />
+                <Text style={styles.secondaryBtnText}>View All</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
 }
 
-function DetailItem({
-  icon,
-  label,
-  value,
-}: {
-  icon: any;
-  label: string;
-  value: string;
-}) {
-  return (
-    <View style={styles.detailItem}>
-      <View style={styles.detailHeader}>
-        <Ionicons name={icon} size={20} color="#6B7280" />
-        <Text style={styles.detailLabel}>{label}</Text>
-      </View>
-      <Text style={styles.detailValue} numberOfLines={1}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  safe: {
+  safeArea: {
     flex: 1,
-    backgroundColor: "#D7E5DD",
+    backgroundColor: "#F0F5F3",
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "#F0F5F3",
   },
   header: {
     flexDirection: "row",
+    justifyContent: "flex-end",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 16,
-    backgroundColor: "#D7E5DD",
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   backBtn: {
     width: 40,
     height: 40,
-    justifyContent: "center",
+    borderRadius: 20,
+    backgroundColor: "#fff",
     alignItems: "center",
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#1F2937",
-    letterSpacing: 0.3,
-  },
-
-  content: {
-    flex: 1,
     justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-
-  card: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 28,
-    padding: 28,
-    alignItems: "center",
     shadowColor: "#000",
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  successContainer: {
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  checkCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    shadowColor: "#22C55E",
+    shadowOpacity: 0.3,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
-    elevation: 12,
-  },
-
-  // Success Badge
-  badge: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
-
   successTitle: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#1F2937",
-    marginBottom: 12,
-    letterSpacing: 0.2,
+    color: "#1E3932",
+    marginBottom: 4,
+    textAlign: "center",
   },
-
-  amount: {
-    fontSize: 48,
+  successSubtitle: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#6B7280",
+    textAlign: "center",
+  },
+  amountCard: {
+    borderRadius: 10,
+    marginBottom: 12,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  amountCardGradient: {
+    padding: 18,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  amountValue: {
+    fontSize: 40,
     fontWeight: "900",
-    color: "#111827",
-    marginBottom: 24,
+    color: "#1E3932",
+    marginBottom: 6,
     letterSpacing: -1,
   },
-
-  // Details Grid
-  detailsGrid: {
-    width: "100%",
-    backgroundColor: "#F8FAFB",
-    borderRadius: 18,
-    padding: 18,
-    gap: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#E5E9EB",
-  },
-
-  detailItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  detailHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-
-  detailLabel: {
-    fontSize: 14,
+  amountLabel: {
+    fontSize: 12,
     fontWeight: "600",
     color: "#6B7280",
   },
-
+  detailsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  detailsTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#1E3932",
+    marginBottom: 12,
+  },
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  detailLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  detailIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "#F9FAFB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
   detailValue: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "700",
-    color: "#1F2937",
+    color: "#1E3932",
     textAlign: "right",
     maxWidth: "50%",
   },
-
-  // Note Container
-  noteContainer: {
-    width: "100%",
+  noteSection: {
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
+  noteHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: "#F8FAFB",
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#E5E9EB",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+  noteLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#1E3932",
   },
   noteText: {
-    flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
-    color: "#6B7280",
-    lineHeight: 20,
+    color: "#4B5563",
+    lineHeight: 18,
   },
-
-  // Primary Button
+  actionsContainer: {
+    marginTop: 4,
+  },
   primaryBtn: {
-    width: "100%",
-    backgroundColor: "#1E4539",
-    borderRadius: 16,
-    paddingVertical: 18,
+    backgroundColor: "#1E3932",
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
-    shadowColor: "#1E4539",
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginBottom: 10,
+    gap: 8,
+    shadowColor: "#1E3932",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    elevation: 4,
   },
   primaryBtnText: {
-    color: "#FFFFFF",
-    fontWeight: "800",
-    fontSize: 17,
-    letterSpacing: 0.5,
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
   },
-
-  // Secondary Buttons
-  secondaryBtnsRow: {
+  secondaryBtns: {
     flexDirection: "row",
-    width: "100%",
     gap: 12,
   },
   secondaryBtn: {
@@ -368,17 +515,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
-    backgroundColor: "#D7E5DD",
-    paddingVertical: 14,
+    gap: 6,
+    backgroundColor: "#fff",
+    paddingVertical: 12,
     borderRadius: 16,
     borderWidth: 1.5,
-    borderColor: "#C4D6CA",
+    borderColor: "#E5E7EB",
   },
   secondaryBtnText: {
-    color: "#1F2937",
+    color: "#1E3932",
     fontWeight: "700",
     fontSize: 14,
-    letterSpacing: 0.2,
   },
 });

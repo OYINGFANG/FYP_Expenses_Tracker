@@ -12,7 +12,6 @@ import {
 } from "react-native";
 import { Swipeable, GestureHandlerRootView } from "react-native-gesture-handler";
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -26,14 +25,13 @@ import {
 } from "../utils/notificationStore";
 
 /* ---------- Brand / UI ---------- */
-const BRAND_BG_GRADIENT = ["#1E5449", "#154C42", "#0F3D35"] as const;
 const BRAND_DARK = "#1E3932";
-const BRAND_GREEN = "#22C55E";
 const CARD_BG = "#FFFFFF";
 const MUTED = "#6B7280";
 const RED = "#EF4444";
 const ORANGE = "#F59E0B";
 const BLUE = "#3B82F6";
+const BG_LIGHT = "#E4F2ED";
 
 /* ---------- Helpers ---------- */
 const formatNotificationDate = (iso: string) => {
@@ -67,11 +65,11 @@ const getNotificationColor = (type: AppNotification["type"]) => {
     case "debtReminder":
       return RED;
     case "savingsReminder":
-      return BRAND_GREEN;
+      return "#059669";
     case "budgetReminder":
       return ORANGE;
     case "badgeAchievement":
-      return BRAND_GREEN;
+      return "#7C3AED";
     default:
       return BLUE;
   }
@@ -139,7 +137,7 @@ function NotificationItem({
           notification.read && styles.notificationCardRead,
         ]}
       >
-        <View style={[styles.notificationIcon, { backgroundColor: color + "22" }]}>
+        <View style={[styles.notificationIcon, { backgroundColor: color + "15" }]}>
           <Ionicons name={icon as any} size={20} color={color} />
         </View>
         <View style={styles.notificationContent}>
@@ -270,7 +268,7 @@ export default function Notifications() {
 
   const handleDelete = async (id: string) => {
     try {
-      const userId = await AsyncStorage.getItem("userId");
+      const  userId = await AsyncStorage.getItem("userId");
       await deleteNotification(id, userId);
       await loadNotifications();
     } catch (error) {
@@ -295,8 +293,7 @@ export default function Notifications() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={{ flex: 1 }}>
-      <LinearGradient colors={BRAND_BG_GRADIENT} style={StyleSheet.absoluteFill} />
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: BG_LIGHT }]}>
 
       {/* Header */}
       <View style={styles.header}>
@@ -306,7 +303,7 @@ export default function Notifications() {
           activeOpacity={0.7}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="chevron-back" size={22} color="#fff" />
+          <Ionicons name="chevron-back" size={22} color={BRAND_DARK} />
         </TouchableOpacity>
         <Text style={styles.title}>Notifications</Text>
       </View>
@@ -319,7 +316,7 @@ export default function Notifications() {
             style={styles.actionButton}
             activeOpacity={0.7}
           >
-            <Ionicons name="checkmark-done" size={18} color={BRAND_DARK} />
+            <Ionicons name="checkmark-done" size={20} color={BRAND_DARK} />
             <Text style={styles.actionButtonText}>Mark All Read</Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -327,7 +324,7 @@ export default function Notifications() {
             style={[styles.actionButton, styles.actionButtonDanger]}
             activeOpacity={0.7}
           >
-            <Ionicons name="trash-outline" size={18} color={RED} />
+            <Ionicons name="trash-outline" size={20} color={RED} />
             <Text style={[styles.actionButtonText, { color: RED }]}>
               Clear All
             </Text>
@@ -435,7 +432,7 @@ export default function Notifications() {
                   color={
                     typeFilter === "debtReminder"
                       ? "#fff"
-                      : BRAND_DARK
+                      : MUTED
                   }
                 />
                 <Text
@@ -462,7 +459,7 @@ export default function Notifications() {
                   color={
                     typeFilter === "savingsReminder"
                       ? "#fff"
-                      : BRAND_DARK
+                      : MUTED
                   }
                 />
                 <Text
@@ -489,7 +486,7 @@ export default function Notifications() {
                   color={
                     typeFilter === "budgetReminder"
                       ? "#fff"
-                      : BRAND_DARK
+                      : MUTED
                   }
                 />
                 <Text
@@ -516,7 +513,7 @@ export default function Notifications() {
                   color={
                     typeFilter === "badgeAchievement"
                       ? "#fff"
-                      : BRAND_DARK
+                      : MUTED
                   }
                 />
                 <Text
@@ -537,7 +534,7 @@ export default function Notifications() {
       {/* Notifications List */}
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
+          <ActivityIndicator size="large" color={BRAND_DARK} />
           <Text style={styles.loadingText}>Loading notifications…</Text>
         </View>
       ) : notifications.length === 0 ? (
@@ -595,25 +592,26 @@ export default function Notifications() {
 /* ---------- Styles ---------- */
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 16,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     position: "relative",
   },
+  safeArea: {
+    flex: 1,
+  },
   headerBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
   title: {
-    color: "#fff",
-    fontSize: 18,
+    color: BRAND_DARK,
+    fontSize: 22,
     fontWeight: "800",
     position: "absolute",
     left: 0,
@@ -623,28 +621,28 @@ const styles = StyleSheet.create({
   },
   actionsContainer: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    gap: 10,
-    marginBottom: 12,
+    paddingHorizontal: 25,
+    gap: 15,
+    marginBottom: 5,
   },
   actionButton: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
+    gap: 8,
     backgroundColor: CARD_BG,
     paddingVertical: 10,
-    borderRadius: 12,
-    ...shadow(2, 0.06),
+    borderRadius: 18,
+    ...shadow(3, 0.12),
   },
   actionButtonDanger: {
-    backgroundColor: "#FFF1F2",
+    backgroundColor: "#FEF2F2",
   },
   actionButtonText: {
     color: BRAND_DARK,
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 14,
   },
   loadingContainer: {
     flex: 1,
@@ -652,63 +650,61 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   loadingText: {
-    marginTop: 12,
-    color: "#E5E7EB",
-    fontSize: 14,
+    marginTop: 16,
+    color: MUTED,
+    fontSize: 15,
     fontWeight: "600",
   },
   emptyContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
+    paddingHorizontal: 40,
   },
   emptyTitle: {
-    color: "#fff",
-    fontSize: 20,
+    color: BRAND_DARK,
+    fontSize: 22,
     fontWeight: "800",
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 20,
+    marginBottom: 5,
   },
   emptyText: {
-    color: "rgba(255,255,255,0.8)",
-    fontSize: 14,
+    color: MUTED,
+    fontSize: 15,
     textAlign: "center",
-    lineHeight: 20,
+    lineHeight: 22,
   },
   unreadBadge: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 8,
-    backgroundColor: ORANGE + "22",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: ORANGE + "44",
+    marginHorizontal: 20,
+    marginBottom: 20,
+    backgroundColor: "#D1FAE5",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 0,
   },
   unreadBadgeText: {
-    color: ORANGE,
+    color: "#059669",
     fontWeight: "700",
-    fontSize: 12,
+    fontSize: 13,
     textAlign: "center",
   },
   notificationCard: {
-    marginHorizontal: 16,
-    marginBottom: 12,
+    marginHorizontal: 20,
+    marginBottom: 10,
     backgroundColor: CARD_BG,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 14,
     flexDirection: "row",
     gap: 12,
-    ...shadow(2, 0.06),
+    ...shadow(3, 0.12),
   },
   notificationCardRead: {
-    opacity: 0.7,
+    opacity: 0.65,
   },
   notificationIcon: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -721,14 +717,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: MUTED,
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: 4,
   },
   notificationTitle: {
     fontSize: 15,
-    fontWeight: "900",
+    fontWeight: "800",
     color: BRAND_DARK,
     marginBottom: 4,
+    lineHeight: 20,
   },
   notificationTitleRead: {
     fontWeight: "600",
@@ -736,7 +733,7 @@ const styles = StyleSheet.create({
   },
   notificationBody: {
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "500",
     color: BRAND_DARK,
     marginBottom: 6,
     lineHeight: 18,
@@ -761,7 +758,7 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   leftAction: {
-    backgroundColor: BRAND_GREEN,
+    backgroundColor: "#1E3932",
     justifyContent: "center",
     alignItems: "center",
     width: 80,
@@ -770,61 +767,60 @@ const styles = StyleSheet.create({
     marginLeft: 16,
   },
   filterContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 14,
+    marginBottom: 6,
   },
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
   },
   filterLabel: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 13,
+    color: BRAND_DARK,
+    fontSize: 14,
     fontWeight: "700",
-    minWidth: 50,
+    minWidth: 55,
   },
   filterChips: {
     flexDirection: "row",
-    gap: 8,
+    gap: 10,
     flex: 1,
   },
   filterChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "#F9FAFB",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 22,
+    borderWidth: 0,
   },
   filterChipActive: {
-    backgroundColor: CARD_BG,
-    borderColor: CARD_BG,
+    backgroundColor: BRAND_DARK,
+    borderWidth: 0,
   },
   filterChipText: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 12,
+    color: MUTED,
+    fontSize: 13,
     fontWeight: "700",
   },
   filterChipTextActive: {
-    color: BRAND_DARK,
+    color: "#fff",
   },
   resetFilterButton: {
-    marginTop: 16,
+    marginTop: 20,
     backgroundColor: CARD_BG,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
-    ...shadow(2, 0.06),
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 16,
+    ...shadow(3, 0.12),
   },
   resetFilterButtonText: {
     color: BRAND_DARK,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
   },
 });
