@@ -114,8 +114,9 @@ export default function AddRecord() {
     { icon: "movie", label: "Entertainment", type: "MaterialIcons" },
     { icon: "local-hospital", label: "Healthcare", type: "MaterialIcons" },
     { icon: "school", label: "Education", type: "MaterialIcons" },
-    { icon: "savings", label: "Savings", type: "MaterialIcons", disabled: true },
     { icon: "category", label: "Others", type: "MaterialIcons" },
+    { icon: "account-balance-wallet", label: "Debt", type: "MaterialIcons", disabled: true },
+    { icon: "savings", label: "Savings", type: "MaterialIcons", disabled: true },
   ];
 
   const incomeCategories: CategoryOption[] = [

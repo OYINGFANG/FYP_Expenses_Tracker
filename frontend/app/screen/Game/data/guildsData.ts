@@ -9,8 +9,8 @@ const guildsData: GuildItemData = {
     location: Locations.Kuala_Lumpur,
     price: 1500,
   },
-  butre: {
-    location: Locations.Butre,
+  sabah: {
+    location: Locations.Sabah,
     price: 2000,
   },
   luci: {

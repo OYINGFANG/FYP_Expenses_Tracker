@@ -54,6 +54,7 @@ const CATEGORY_ORDER = [
   "Healthcare",
   "Education",
   "Savings",
+  "Debt",
   "Others",
 ] as const;
 
@@ -67,6 +68,7 @@ const CATEGORY_COLORS: Record<(typeof CATEGORY_ORDER)[number], string> = {
   Healthcare: "#74B9FF",
   Education: "#FD79A8",
   Savings: "#FDCB6E",
+  Debt: "#DC2626",
   Others: "#B2BEC3",
 };
 
@@ -80,6 +82,7 @@ const CATEGORY_ICONS: Record<(typeof CATEGORY_ORDER)[number], any> = {
   Healthcare: "medical",
   Education: "school",
   Savings: "wallet",
+  Debt: "card-outline",
   Others: "ellipsis-horizontal",
 };
 
@@ -646,8 +649,8 @@ export default function Stats() {
             ]}
           >
             <TouchableOpacity style={styles.exchangeBtn} onPress={handleExchange} activeOpacity={0.85}>
-            <LinearGradient colors={["#A7F3D0", "#6EE7B7"] as const} style={styles.exchangeBtnGradient}>
-            <Ionicons name="swap-vertical" size={24} color="#065F46" />
+              <LinearGradient colors={["#A7F3D0", "#6EE7B7"] as const} style={styles.exchangeBtnGradient}>
+                <Ionicons name="swap-vertical" size={24} color="#065F46" />
               </LinearGradient>
             </TouchableOpacity>
           </Animated.View>

@@ -365,7 +365,7 @@ function DebtEditor({
   const [currentBalance, setCurrentBalance] = useState(String(initial?.currentBalance ?? ""));
   const [monthlyPayment, setMonthlyPayment] = useState(String(initial?.monthlyPayment ?? ""));
   const [startDate, setStartDate] = useState<Date | null>(
-    initial?.startDate ? new Date(initial.startDate) : null
+    initial?.startDate ? new Date(initial.startDate) : new Date()
   );
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -377,7 +377,7 @@ function DebtEditor({
     setCurrentBalance(String(initial?.currentBalance ?? ""));
     setMonthlyPayment(String(initial?.monthlyPayment ?? ""));
     setStartDate(
-      initial?.startDate ? new Date(initial.startDate) : null
+      initial?.startDate ? new Date(initial.startDate) : new Date()
     );
     setShowDatePicker(false);
   }, [open, initial]);
@@ -453,13 +453,28 @@ function DebtEditor({
               keyboardType="numeric" 
               placeholder="e.g., 10000" 
             />
-            <LabeledInput 
-              label="Current Balance" 
-              value={currentBalance} 
-              onChangeText={setCurrentBalance} 
-              keyboardType="numeric" 
-              placeholder="e.g., 7500" 
-            />
+            <View>
+              <LabeledInput 
+                label="Current Balance" 
+                value={currentBalance} 
+                onChangeText={setCurrentBalance} 
+                keyboardType="numeric" 
+                placeholder="e.g., 7500" 
+                style={
+                  parseNum(currentBalance) > parseNum(originalAmount) && originalAmount
+                    ? { borderColor: "#EF4444", borderWidth: 1.5 }
+                    : undefined
+                }
+              />
+              {parseNum(currentBalance) > parseNum(originalAmount) && originalAmount && (
+                <View style={styles.validationError}>
+                  <Ionicons name="alert-circle" size={14} color="#EF4444" />
+                  <Text style={styles.validationErrorText}>
+                    Current balance cannot exceed original amount
+                  </Text>
+                </View>
+              )}
+            </View>
             <LabeledInput 
               label="Target Monthly Payment" 
               value={monthlyPayment} 
@@ -861,6 +876,16 @@ export default function Debt() {
 
   const saveDebt = async (d: Debt) => {
     if (!userId) return Alert.alert("Not signed in", "Please sign in first.");
+    
+    // Validate that current balance cannot exceed original amount
+    if (d.currentBalance > d.originalAmount) {
+      Alert.alert(
+        "Invalid Balance",
+        "Current balance cannot exceed the original amount. Please adjust the values."
+      );
+      return;
+    }
+    
     try {
       await upsertDebt(userId, d);
       // Sync debt reminder after successful save
@@ -986,22 +1011,29 @@ export default function Debt() {
                 <Image
                   source={
                     totals.healthScore >= 0 && totals.healthScore <= 20
-                      ? require("../../assets/images/home-happy.png")
+                      ? require("../../assets/images/home-angry.png")
                       : totals.healthScore >= 21 && totals.healthScore <= 40
-                      ? require("../../assets/images/home-sad.png")
+                      ? require("../../assets/images/home-noeye.png")
                       : totals.healthScore >= 41 && totals.healthScore <= 60
                       ? require("../../assets/images/home-attention.png")
                       : totals.healthScore >= 61 && totals.healthScore <= 80
-                      ? require("../../assets/images/home-noeye.png")
-                      : require("../../assets/images/home-angry.png")
+                      ? require("../../assets/images/home-sad.png")
+                      : require("../../assets/images/home-happy.png")
                   }
                   style={styles.debtHealthScoreImage}
                   resizeMode="contain"
                 />
                 {totals.healthScore < 60 ? (
-                  <View style={styles.needsAttentionRow}>
-                    <Ionicons name="warning" size={16} color="#DC2626" />
-                    <Text style={styles.needsAttentionTitle}>Needs Attention</Text>
+                  <View style={[styles.scoreStatusBadge, {
+                    backgroundColor: "#FEF2F2",
+                    borderColor: "#FECACA"
+                  }]}>
+                    <Ionicons name="warning" size={14} color="#DC2626" />
+                    <Text style={[styles.scoreTag, { 
+                      color: "#DC2626"
+                    }]}>
+                      Needs Attention
+                    </Text>
                   </View>
                 ) : (
                   <View style={[styles.scoreStatusBadge, {
@@ -1051,9 +1083,17 @@ export default function Debt() {
                 <>
                   <View style={styles.breakdownInfo}>
                     <Ionicons name="calculator-outline" size={16} color={BLUE} />
-                    <Text style={styles.breakdownInfoText}>
-                      Your score is calculated from 4 factors weighted by importance
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.breakdownInfoText}>
+                        Your score is calculated from 4 factors weighted by importance
+                      </Text>
+                      <View style={styles.scoreExplanation}>
+                        <Ionicons name="information-circle-outline" size={14} color={MUTED} />
+                        <Text style={styles.scoreExplanationText}>
+                          Lower scores indicate worse debt situations. Aim for 80+ for excellent health.
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                   
                   <View style={styles.factorsGrid}>
@@ -1728,10 +1768,10 @@ const styles = StyleSheet.create({
   },
   debtHealthScoreImage: {
     width: 80,
-    height: 90,
+    height: 85,
     position: "absolute",
     right: -10,
-    top: -25,
+    top: -5,
   },
   scoreLabelWhite: { 
     fontWeight: "800", 
@@ -1810,7 +1850,7 @@ const styles = StyleSheet.create({
   },
 
   subscores: { 
-    marginTop: 5, 
+    marginTop: 18, 
     gap: 10 
   },
   subscoresTitle: {
@@ -1938,6 +1978,22 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     flex: 1,
     lineHeight: 18,
+  },
+  scoreExplanation: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  scoreExplanationText: {
+    flex: 1,
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "600",
+    lineHeight: 16,
   },
   breakdownInfoWhite: {
     backgroundColor: "rgba(255, 255, 255, 0.15)",
@@ -2454,6 +2510,18 @@ const styles = StyleSheet.create({
   datePickerPlaceholder: {
     color: MUTED,
     fontWeight: "600",
+  },
+  validationError: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+    paddingHorizontal: 4,
+  },
+  validationErrorText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#EF4444",
   },
 });
 

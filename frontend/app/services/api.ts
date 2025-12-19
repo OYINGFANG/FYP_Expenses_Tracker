@@ -84,7 +84,7 @@ export async function sendMessageToServer(
 export type Expense = {
   id?: number | string;
   amount: number;
-  category?: string;       // optional; backend will auto-categorize if missing/Miscellaneous
+  category?: string;       // optional; backend will auto-categorize if missing/Others
   description?: string;    // your note or merchant/metadata
   date?: string;           // ISO string
 };

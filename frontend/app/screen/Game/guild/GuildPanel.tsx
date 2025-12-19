@@ -22,7 +22,14 @@ const GuildPanel = () => {
   });
   const isMemberOfLocalGuild = flags[`guild__${location}`];
   const benefits = getGuildBenefitsByLocation(location);
-  const membershipPrice = guildsData[location].price;
+  // Normalize location key to match guildsData keys
+  // Map 'kl' to 'Kuala_Lumpur' to match guildsData structure
+  const locationKeyMap: { [key: string]: string } = {
+    'kl': 'Kuala_Lumpur',
+  };
+  const normalizedLocation = locationKeyMap[location.toLowerCase()] || location.toLowerCase();
+  const guildData = guildsData[normalizedLocation as keyof typeof guildsData];
+  const membershipPrice = guildData?.price ?? 0;
   const canAfford = gameState.cash >= membershipPrice;
   const handlePurchaseMembership = () => {
     dispatch(purchaseGuildMembership(location));

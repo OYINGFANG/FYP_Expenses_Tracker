@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -322,17 +322,36 @@ export default function Home() {
   const [savingsButtonLayout, setSavingsButtonLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [scrollY, setScrollY] = useState(0);
 
-  // Load user data
+  // Load username (only once)
   useEffect(() => {
     const loadUserData = async () => {
       const userData = await getUsernameFromFirestore();
       if (userData) {
         setUsername(userData.username);
-        setTotal(userData.totalBalance);
       }
     };
     loadUserData();
   }, []);
+
+  // Calculate total balance from subscribed income and expense records
+  // This ensures it updates immediately when expenses/income change
+  useEffect(() => {
+    const totalIncome = incomeRecords.reduce((sum, r) => sum + r.amount, 0);
+    const totalExpense = expenseRecords.reduce((sum, r) => sum + r.amount, 0);
+    const calculatedBalance = totalIncome - totalExpense;
+    setTotal(calculatedBalance);
+  }, [incomeRecords, expenseRecords]);
+
+  // Also refresh balance when screen comes into focus (e.g., when navigating back from Savings)
+  useFocusEffect(
+    useCallback(() => {
+      // Recalculate balance from current records when screen is focused
+      const totalIncome = incomeRecords.reduce((sum, r) => sum + r.amount, 0);
+      const totalExpense = expenseRecords.reduce((sum, r) => sum + r.amount, 0);
+      const calculatedBalance = totalIncome - totalExpense;
+      setTotal(calculatedBalance);
+    }, [incomeRecords, expenseRecords])
+  );
 
   // ============ Debt health helpers ============
 
@@ -405,17 +424,23 @@ useEffect(() => {
   })();
 }, []);
 
-// Load notification count
-const loadNotificationCount = async () => {
+// Cache key for notification count
+const NOTIFICATION_CACHE_KEY = 'cached_notification_count';
+
+// Load cached notification count immediately for instant display
+useEffect(() => {
+  const loadCachedCount = async () => {
   try {
-    const stored = await AsyncStorage.getItem("userId");
-    const notifications = await getNotifications(stored);
-    const unreadCount = notifications.filter(n => !n.read).length;
-    setUnreadNotificationCount(unreadCount);
+      const cached = await AsyncStorage.getItem(NOTIFICATION_CACHE_KEY);
+      if (cached !== null) {
+        setUnreadNotificationCount(parseInt(cached, 10));
+      }
   } catch (error) {
-    console.error("Error loading notification count:", error);
+      console.error("Error loading cached notification count:", error);
   }
 };
+  loadCachedCount();
+}, []);
 
 // Subscribe to real-time notification updates
 useEffect(() => {
@@ -426,6 +451,10 @@ useEffect(() => {
     unsubscribe = subscribeToNotifications(stored, (notifications) => {
       const unreadCount = notifications.filter(n => !n.read).length;
       setUnreadNotificationCount(unreadCount);
+      // Cache the count for next app launch (instant display)
+      AsyncStorage.setItem(NOTIFICATION_CACHE_KEY, unreadCount.toString()).catch(err => {
+        console.error("Error caching notification count:", err);
+      });
     });
   };
   
@@ -437,13 +466,6 @@ useEffect(() => {
     }
   };
 }, []);
-
-// Also load on focus for immediate update
-useFocusEffect(
-  useCallback(() => {
-    loadNotificationCount();
-  }, [])
-);
 
 // Subscribe to user's debts
 useEffect(() => {
@@ -525,7 +547,7 @@ const debtHealth = useMemo(() => {
           const breakdown = records
             .filter(r => r.dateISO && r.dateISO >= startISO && r.dateISO < endISO)
             .reduce<Record<string, number>>((acc, r) => {
-              const cat = r.category || "Miscellaneous";
+              const cat = r.category || "Others";
               acc[cat] = (acc[cat] || 0) + r.amount;
               return acc;
             }, {});
@@ -587,7 +609,10 @@ const debtHealth = useMemo(() => {
     loadBudgetProgress();
   }, [expenseRecords]);
 
-  // Run AI-powered behavior analysis when data changes
+  // Debounce helper for AI analysis
+  const analysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Run AI-powered behavior analysis when data changes (debounced)
   const runBehaviorAnalysis = async () => {
     try {
       setIsLoadingAnalysis(true);
@@ -749,10 +774,26 @@ const debtHealth = useMemo(() => {
   };
 
   useEffect(() => {
-    // Run analysis when expenses, income, debts, or budget changes
-    if (expenseRecords.length > 0 || incomeRecords.length > 0 || debts.length > 0) {
-      runBehaviorAnalysis();
+    // Debounce AI analysis to prevent excessive API calls
+    // Clear any existing timeout
+    if (analysisTimeoutRef.current) {
+      clearTimeout(analysisTimeoutRef.current);
     }
+
+    // Run analysis when expenses, income, debts, or budget changes
+    // But wait 1.5 seconds after the last change to batch updates
+    if (expenseRecords.length > 0 || incomeRecords.length > 0 || debts.length > 0) {
+      analysisTimeoutRef.current = setTimeout(() => {
+      runBehaviorAnalysis();
+      }, 1500); // Wait 1.5 seconds after last change
+    }
+
+    // Cleanup timeout on unmount or dependency change
+    return () => {
+      if (analysisTimeoutRef.current) {
+        clearTimeout(analysisTimeoutRef.current);
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expenseRecords, incomeRecords, debts, budgetTotal, budgetSpent]);
 
@@ -769,7 +810,7 @@ const debtHealth = useMemo(() => {
       Transport: "#ec4899",
       Healthcare: "#ef4444",
       Education: "#06b6d4",
-      Miscellaneous: "#6b7280",
+      Others: "#6b7280",
     };
 
     const categoryIcons: Record<string, string> = {
@@ -780,7 +821,7 @@ const debtHealth = useMemo(() => {
       Transport: "car",
       Healthcare: "medical",
       Education: "school",
-      Miscellaneous: "ellipse",
+      Others: "ellipse",
     };
 
     const sorted = Object.entries(categoryBreakdown)
@@ -1206,35 +1247,35 @@ const debtHealth = useMemo(() => {
             >
               <View style={styles.healthScoreHeader}>
                 <Ionicons name="trophy" size={24} color="#fff" />
-                <Text style={styles.statLabel}>Health Score</Text>
+              <Text style={styles.statLabel}>Health Score</Text>
               </View>
               <View style={styles.healthScoreRow}>
                 <View style={styles.healthScoreLeft}>
-                  <Text style={styles.statValue}>
-                    {debtHealth ? `${debtHealth.healthScore}%` : "—"}
-                  </Text>
-                  <Text style={styles.statSubtext}>
-                    {debtHealth
-                      ? debtHealth.healthScore >= 80
-                        ? "Excellent"
-                        : debtHealth.healthScore >= 60
-                        ? "Good standing"
+              <Text style={styles.statValue}>
+                {debtHealth ? `${debtHealth.healthScore}%` : "—"}
+              </Text>
+              <Text style={styles.statSubtext}>
+                {debtHealth
+                  ? debtHealth.healthScore >= 80
+                    ? "Excellent"
+                    : debtHealth.healthScore >= 60
+                    ? "Good standing"
                         : "Need attention"
-                      : "Add your debts to see score"}
-                  </Text>
+                  : "Add your debts to see score"}
+              </Text>
                 </View>
                 <Image
                   source={
                     debtHealth
                       ? debtHealth.healthScore >= 0 && debtHealth.healthScore <= 20
-                        ? require("../../assets/images/home-happy.png")
+                        ? require("../../assets/images/home-angry.png")
                         : debtHealth.healthScore >= 21 && debtHealth.healthScore <= 40
-                        ? require("../../assets/images/home-sad.png")
+                        ? require("../../assets/images/home-noeye.png")
                         : debtHealth.healthScore >= 41 && debtHealth.healthScore <= 60
                         ? require("../../assets/images/home-attention.png")
                         : debtHealth.healthScore >= 61 && debtHealth.healthScore <= 80
-                        ? require("../../assets/images/home-noeye.png")
-                        : require("../../assets/images/home-angry.png")
+                        ? require("../../assets/images/home-sad.png")
+                        : require("../../assets/images/home-happy.png")
                       : require("../../assets/images/home-happy.png")
                   }
                   style={styles.healthScoreImage}
@@ -1252,7 +1293,7 @@ const debtHealth = useMemo(() => {
           >
             <View style={styles.budgetProgressHeader}>
               <Ionicons name="flag" size={24} color="#000" />
-              <Text style={styles.statLabel2}>Budget Progress</Text>
+            <Text style={styles.statLabel2}>Budget Progress</Text>
             </View>
 
             {budgetTotal > 0 ? (
@@ -1466,119 +1507,119 @@ const styles = StyleSheet.create({
   statLabel2: { color: "#000", fontSize: 13, opacity: 0.9 },
   statValue2: { color: "#000", fontSize: 28, fontWeight: "700", marginTop: 4 },
   statSubtext2: { color: "#000", fontSize: 11, opacity: 0.8, marginTop: 4 },
-  insightBox: {
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-  },
-  insightGood: {
-    backgroundColor: "#D1FAE5",
-    borderColor: "#A7F3D0",
-  },
-  insightWarning: {
-    backgroundColor: "#FEF3C7",
-    borderColor: "#FDE68A",
-  },
-  insightText: {
-    color: "#1E3932",
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  insightHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-  insightIcon: {
-    fontSize: 20,
-  },
-  criticalBadge: {
-    backgroundColor: "#DC2626",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  criticalBadgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  warningBadge: {
-    backgroundColor: "#D97706",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  warningBadgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  loadingText: {
-    fontSize: 11,
-    color: "#6b7280",
-    marginLeft: 8,
-    fontStyle: "italic",
-  },
-  analysisSummary: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 10,
-    width: "100%",
-  },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginVertical: 4,
-  },
-  summaryLabel: {
-    color: "#C9EAD6",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  summaryValue: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  emptyBreakdown: {
-    padding: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyBreakdownText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#6b7280",
-    marginBottom: 8,
-  },
-  emptyBreakdownSubtext: {
-    fontSize: 12,
-    color: "#9ca3af",
-    textAlign: "center",
-  },
-  greeting: {
-    fontSize: 18,
-    color: "#1E3932",
-    fontWeight: "600",
-    flexShrink: 1,
-    marginTop: 15,
-  },
-  logoutButtonRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#1E3932",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    gap: 6,
-    marginTop: 0,
-  },
-  logoutFab: {
+insightBox: {
+  borderRadius: 12,
+  padding: 12,
+  marginBottom: 8,
+  borderWidth: 1,
+},
+insightGood: {
+  backgroundColor: "#D1FAE5",
+  borderColor: "#A7F3D0",
+},
+insightWarning: {
+  backgroundColor: "#FEF3C7",
+  borderColor: "#FDE68A",
+},
+insightText: {
+  color: "#1E3932",
+  fontSize: 13,
+  lineHeight: 18,
+},
+insightHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginBottom: 6,
+},
+insightIcon: {
+  fontSize: 20,
+},
+criticalBadge: {
+  backgroundColor: "#DC2626",
+  paddingHorizontal: 8,
+  paddingVertical: 2,
+  borderRadius: 4,
+},
+criticalBadgeText: {
+  color: "#fff",
+  fontSize: 10,
+  fontWeight: "700",
+},
+warningBadge: {
+  backgroundColor: "#D97706",
+  paddingHorizontal: 8,
+  paddingVertical: 2,
+  borderRadius: 4,
+},
+warningBadgeText: {
+  color: "#fff",
+  fontSize: 10,
+  fontWeight: "700",
+},
+loadingText: {
+  fontSize: 11,
+  color: "#6b7280",
+  marginLeft: 8,
+  fontStyle: "italic",
+},
+analysisSummary: {
+  marginTop: 12,
+  padding: 12,
+  backgroundColor: "rgba(255, 255, 255, 0.1)",
+  borderRadius: 10,
+  width: "100%",
+},
+summaryRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginVertical: 4,
+},
+summaryLabel: {
+  color: "#C9EAD6",
+  fontSize: 12,
+  fontWeight: "500",
+},
+summaryValue: {
+  color: "#fff",
+  fontSize: 14,
+  fontWeight: "700",
+},
+emptyBreakdown: {
+  padding: 32,
+  alignItems: "center",
+  justifyContent: "center",
+},
+emptyBreakdownText: {
+  fontSize: 16,
+  fontWeight: "600",
+  color: "#6b7280",
+  marginBottom: 8,
+},
+emptyBreakdownSubtext: {
+  fontSize: 12,
+  color: "#9ca3af",
+  textAlign: "center",
+},
+greeting: {
+  fontSize: 18,
+  color: "#1E3932",
+  fontWeight: "600",
+  flexShrink: 1,
+  marginTop: 15,
+},
+logoutButtonRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#1E3932",
+  paddingHorizontal: 12,
+  paddingVertical: 8,
+  borderRadius: 12,
+  gap: 6,
+  marginTop: 0,
+},
+logoutFab: {
     position: "absolute",
     right: 16,
     top: 57, 

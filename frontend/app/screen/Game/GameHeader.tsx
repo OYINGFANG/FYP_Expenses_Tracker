@@ -14,7 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router'; // << use expo-router to navigate
 import { useGameSliceSelector, useGameSliceDispatch } from './store/reduxHooks';
-import { closeGame, setModalStatus, setCurrentModal, quickSave, loadSavedGame } from './store/gameSlice';
+import { closeGame, setModalStatus, setCurrentModal, quickSave, loadSavedGame, type Slices } from './store/gameSlice';
 import { getQuickSave } from './utils/saveLoadUtils';
 import { GameTabSlugs } from './types';
 import { FormattedMessage, MessageDescriptor } from 'react-intl';
@@ -73,7 +73,7 @@ const GameHeader: React.FC = () => {
   const [nativeModalOpen, setNativeModalOpen] = useState<boolean>(false);
 
   const dispatch = useGameSliceDispatch();
-  const { gameState, gamePanel, modalStatus, currentModal } = useGameSliceSelector((state) => state.game);
+  const { gameState, gamePanel, modalStatus, currentModal } = useGameSliceSelector((state: Slices) => state.game);
   const { location } = gameState;
 
   useEffect(() => {
@@ -157,13 +157,13 @@ const GameHeader: React.FC = () => {
           imageStyle={styles.bgImageStyle}
         >
           {/* Warm gradient overlay (won't block touches) */}
-          <LinearGradient
+          {/* <LinearGradient
             colors={['rgba(217,119,6,0.85)', 'rgba(217,119,6,0.0)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.leftGradient}
             pointerEvents="none"
-          />
+          /> */}
 
           {/* Decorative sparkles (won't block touches) */}
           <View style={styles.sparklesContainer} pointerEvents="none">
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#57534E',
     borderBottomColor: '#FCD34D',
   },
-  navInner: { paddingHorizontal: 12, alignItems: 'center' },
+  navInner: { paddingHorizontal: 10, alignItems: 'center', gap: 0 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',

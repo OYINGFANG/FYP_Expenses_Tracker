@@ -399,7 +399,8 @@ export default function Notifications() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterChips}
+              contentContainerStyle={styles.filterChipsScroll}
+              style={styles.filterChipsContainer}
             >
               <TouchableOpacity
                 onPress={() => setTypeFilter("all")}
@@ -767,7 +768,7 @@ const styles = StyleSheet.create({
     marginLeft: 16,
   },
   filterContainer: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 16,
     gap: 14,
     marginBottom: 6,
@@ -775,18 +776,29 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 8,
   },
   filterLabel: {
     color: BRAND_DARK,
     fontSize: 14,
     fontWeight: "700",
-    minWidth: 55,
+    minWidth: 45,
+  },
+  filterChipsContainer: {
+    flex: 1,
+    // Remove maxWidth constraint to allow full width usage
   },
   filterChips: {
     flexDirection: "row",
     gap: 10,
     flex: 1,
+  },
+  filterChipsScroll: {
+    flexDirection: "row",
+    gap: 5,
+    paddingRight: 20,
+    alignItems: "center",
+    // No flex: 1 - allows content to extend beyond container for proper scrolling
   },
   filterChip: {
     flexDirection: "row",

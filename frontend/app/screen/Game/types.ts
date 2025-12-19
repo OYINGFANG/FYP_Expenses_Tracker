@@ -106,8 +106,8 @@ export type TableFieldLabel = {
 
 export enum Locations {
   Melaka = 'melaka',
-  Tabbith = 'tabbith',
-  Butre = 'butre',
+  KL = 'kl',
+  Sabah = 'sabah',
   Luci = 'luci',
   Clionne = 'clionne',
   Winnie = 'winnie',

@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   explainerContainer: {
-    marginBottom: 24,
+    marginBottom: 14,
   },
   explainerText: {
     color: '#FDE68A',
@@ -112,15 +112,15 @@ const styles = StyleSheet.create({
   buttonContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    gap: 24,
-    paddingBottom: 24,
+    gap: 15,
+    paddingBottom: 14,
   },
   contentContainer: {
     paddingBottom: 48,
   },
   savingsCard: {
     paddingHorizontal: 48,
-    paddingVertical: 24,
+    paddingVertical: 15,
     backgroundColor: '#1F2937',
     borderRadius: 8,
     borderWidth: 2,

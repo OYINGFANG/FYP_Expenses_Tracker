@@ -7,7 +7,7 @@ const itemsData: ItemsInfo = {
     weight: 2.5,
     prices: [
       {
-        locations: [Locations.Melaka, Locations.Butre, Locations.Luci],
+        locations: [Locations.Melaka, Locations.Sabah, Locations.Luci],
         seasons: [0, 1],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -17,7 +17,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 1,
       },
       {
-        locations: [Locations.Melaka, Locations.Butre, Locations.Luci],
+        locations: [Locations.Melaka, Locations.Sabah, Locations.Luci],
         seasons: [2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 5,
@@ -27,7 +27,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Tabbith, Locations.Winnie],
+        locations: [Locations.KL, Locations.Winnie],
         seasons: [0, 1],
         actions: ['buy', 'sell'],
         qtyMin: 1,
@@ -37,7 +37,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Tabbith, Locations.Winnie],
+        locations: [Locations.KL, Locations.Winnie],
         seasons: [2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -64,7 +64,7 @@ const itemsData: ItemsInfo = {
     weight: 1,
     prices: [
       {
-        locations: [Locations.Melaka, Locations.Tabbith, Locations.Butre, Locations.Luci],
+        locations: [Locations.Melaka, Locations.KL, Locations.Sabah, Locations.Luci],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -149,7 +149,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Winnie, Locations.Tigi, Locations.Butre, Locations.Luci],
+        locations: [Locations.Winnie, Locations.Tigi, Locations.Sabah, Locations.Luci],
         seasons: [1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -176,7 +176,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 1,
       },
       {
-        locations: [Locations.Luci, Locations.Tabbith, Locations.Tigi],
+        locations: [Locations.Luci, Locations.KL, Locations.Tigi],
         seasons: [0, 1],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -186,7 +186,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Luci, Locations.Tabbith, Locations.Tigi],
+        locations: [Locations.Luci, Locations.KL, Locations.Tigi],
         seasons: [2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -213,7 +213,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 5,
       },
       {
-        locations: [Locations.Butre, Locations.Clionne, Locations.Winnie],
+        locations: [Locations.Sabah, Locations.Clionne, Locations.Winnie],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 2,
@@ -224,14 +224,14 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  // Tabbith
+  // KL
   roti: {
     itemId: 'roti',
     volume: 5,
     weight: 1,
     prices: [
       {
-        locations: [Locations.Tabbith],
+        locations: [Locations.KL],
         seasons: [2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 2,
@@ -258,7 +258,7 @@ const itemsData: ItemsInfo = {
     weight: 2,
     prices: [
       {
-        locations: [Locations.Tabbith],
+        locations: [Locations.KL],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 7,
@@ -285,7 +285,7 @@ const itemsData: ItemsInfo = {
     weight: 0.5,
     prices: [
       {
-        locations: [Locations.Tabbith],
+        locations: [Locations.KL],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 5,
@@ -295,7 +295,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Butre, Locations.Clionne, Locations.Winnie],
+        locations: [Locations.Sabah, Locations.Clionne, Locations.Winnie],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -306,14 +306,14 @@ const itemsData: ItemsInfo = {
       },
     ],
   },
-  // Butre
+  // Sabah
   chocolate: {
     itemId: 'chocolate',
     volume: 1,
     weight: 1,
     prices: [
       {
-        locations: [Locations.Butre],
+        locations: [Locations.Sabah],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 3,
@@ -323,7 +323,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 2,
       },
       {
-        locations: [Locations.Clionne, Locations.Tabbith, Locations.Tigi],
+        locations: [Locations.Clionne, Locations.KL, Locations.Tigi],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -340,7 +340,7 @@ const itemsData: ItemsInfo = {
     weight: 8,
     prices: [
       {
-        locations: [Locations.Butre],
+        locations: [Locations.Sabah],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 5,
@@ -367,7 +367,7 @@ const itemsData: ItemsInfo = {
     weight: 10,
     prices: [
       {
-        locations: [Locations.Butre],
+        locations: [Locations.Sabah],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 2,
@@ -377,7 +377,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 25,
       },
       {
-        locations: [Locations.Tabbith, Locations.Clionne, Locations.Luci],
+        locations: [Locations.KL, Locations.Clionne, Locations.Luci],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -452,7 +452,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Melaka, Locations.Tabbith],
+        locations: [Locations.Melaka, Locations.KL],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -479,7 +479,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Butre, Locations.Tabbith],
+        locations: [Locations.Sabah, Locations.KL],
         seasons: [0, 1],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -571,7 +571,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 80,
       },
       {
-        locations: [Locations.Winnie, Locations.Luci, Locations.Tabbith],
+        locations: [Locations.Winnie, Locations.Luci, Locations.KL],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -681,7 +681,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Butre, Locations.Luci],
+        locations: [Locations.Sabah, Locations.Luci],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -755,7 +755,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 20,
       },
       {
-        locations: [Locations.Melaka, Locations.Tabbith, Locations.Clionne],
+        locations: [Locations.Melaka, Locations.KL, Locations.Clionne],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -838,7 +838,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 2,
       },
       {
-        locations: [Locations.Melaka, Locations.Butre, Locations.Luci],
+        locations: [Locations.Melaka, Locations.Sabah, Locations.Luci],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -865,7 +865,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 500,
       },
       {
-        locations: [Locations.Tabbith, Locations.Clionne],
+        locations: [Locations.KL, Locations.Clionne],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,
@@ -875,7 +875,7 @@ const itemsData: ItemsInfo = {
         guildDiscount: 0,
       },
       {
-        locations: [Locations.Butre, Locations.Winnie],
+        locations: [Locations.Sabah, Locations.Winnie],
         seasons: [0, 1, 2, 3],
         actions: ['buy', 'sell'],
         qtyMin: 0,

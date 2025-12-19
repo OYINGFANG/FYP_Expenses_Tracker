@@ -47,9 +47,9 @@ export default function SelectReceiptItems() {
       const rawAmount: any = (item as any).amount; // This is the LINE TOTAL
       const rawUnitPrice: any = (item as any).unit_price; // This is the UNIT PRICE
       const ocrQuantity = (item as any).quantity;
-
+      
       const qty = typeof ocrQuantity === "number" && ocrQuantity > 0 ? ocrQuantity : 1;
-
+      
       // Determine unit price:
       // 1. If OCR provided unit_price, use it
       // 2. Otherwise, if amount is line total and qty > 1, divide amount by qty
@@ -68,7 +68,7 @@ export default function SelectReceiptItems() {
         desc
       );
       const signedUnitPrice = isDiscount ? -unitPrice : unitPrice;
-
+      
       return {
         ...item,
         amount: String(signedUnitPrice.toFixed(2)), // Store (possibly signed) unit price in amount field
@@ -322,11 +322,11 @@ export default function SelectReceiptItems() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#F0F5F3",
+    backgroundColor: "#E4F2ED",
   },
   container: {
     flex: 1,
-    backgroundColor: "#F0F5F3",
+    backgroundColor: "#E4F2ED",
   },
   headerContainer: {
     flexDirection: "row",

@@ -135,6 +135,8 @@ export async function upsertDebt(userId: string, d: Partial<Debt>) {
     updated_at: serverTimestamp(),
   };
 
+  const isNewDebt = !d.id;
+
   if (d.id) {
     const ref = doc(db, "DEBTS", d.id);
     await setDoc(
@@ -151,6 +153,33 @@ export async function upsertDebt(userId: string, d: Partial<Debt>) {
       ...base,
       created_at: serverTimestamp(),
     });
+    
+    // Create an expense record when a new debt is added
+    // This logs the initial debt amount as an expense
+    if (isNewDebt && (Number(d.originalAmount) || 0) > 0) {
+      try {
+        const debtDate = d.startDate ? new Date(d.startDate) : new Date();
+        const expId = "EXP" + new Date().getTime();
+        const expenseData = {
+          exp_id: expId,
+          user_id: userPath(userId),
+          exp_category: "Debt", // Category for debt creation
+          exp_payment_method: "Bank", // Default payment method
+          exp_total: Number(d.originalAmount) || 0,
+          exp_notes: `Debt created: ${d.name || "Debt"}`,
+          exp_date: debtDate.toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        await addDoc(collection(db, "EXPENSES"), expenseData);
+        console.log(`[Debt Creation] Created expense record for new debt: ${expId}`);
+      } catch (expenseError) {
+        // Log error but don't fail the debt creation - expense creation is secondary
+        console.error("[Debt Creation] Failed to create expense record:", expenseError);
+      }
+    }
+    
     return ref.id;
   }
 }
@@ -164,18 +193,25 @@ export async function addDebtPayment(
   const debtRef = doc(db, "DEBTS", debtId);
   const paysCol = collection(debtRef, "PAYMENTS");
 
+  let updatedDebtData: { debtName: string; paymentAmount: number } | null = null;
+
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(debtRef);
     if (!snap.exists()) throw new Error("Debt not found");
 
     const data = snap.data() as any;
     const current = Number(data.current_balance) || 0;
-    const nextBalance = Math.max(0, current - (Number(p.amount) || 0));
+    const paymentAmount = Number(p.amount) || 0;
+    const nextBalance = Math.max(0, current - paymentAmount);
+    const debtName = data.name || "Debt";
+
+    // Store debt data for expense record creation
+    updatedDebtData = { debtName, paymentAmount };
 
     const payRef = doc(paysCol); // allocate id inside tx
     tx.set(payRef, {
       user_id: userPath(userId),
-      amount: Number(p.amount) || 0,
+      amount: paymentAmount,
       date_iso: p.dateISO,
       note: p.note || null,
       created_at: serverTimestamp(),
@@ -190,6 +226,32 @@ export async function addDebtPayment(
       { merge: true }
     );
   });
+
+  console.log(`[Debt Payment] Added ${p.amount} payment to debt ${debtId}. Debt: ${updatedDebtData?.debtName}`);
+
+  // Create an expense record to deduct from income
+  // This makes the accounting logic correct: money paid to debt = money spent (allocated to debt repayment)
+  try {
+    const paymentDate = p.dateISO ? new Date(p.dateISO) : new Date();
+    const expId = "EXP" + new Date().getTime();
+    const expenseData = {
+      exp_id: expId,
+      user_id: userPath(userId),
+      exp_category: "Debt", // Category for debt payments
+      exp_payment_method: "Bank", // Default payment method for debt payments
+      exp_total: Number(p.amount) || 0,
+      exp_notes: `Debt payment for: ${updatedDebtData?.debtName || "Debt"}${p.note ? ` - ${p.note}` : ""}`,
+      exp_date: paymentDate.toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    await addDoc(collection(db, "EXPENSES"), expenseData);
+    console.log(`[Debt Payment] Created expense record for debt payment: ${expId}`);
+  } catch (expenseError) {
+    // Log error but don't fail the payment - expense creation is secondary
+    console.error("[Debt Payment] Failed to create expense record:", expenseError);
+  }
 }
 
 /** Delete a debt and all its payments. */

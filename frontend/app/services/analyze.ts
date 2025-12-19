@@ -7,7 +7,7 @@ const svc = new BudgetRecommendationService();
 export function analyzeExpenses(expenses: Expense[], monthlyBudget: number): Analysis {
   const totalSpending = round2(expenses.reduce((s, e) => s + (e.amount || 0), 0));
   const categoryBreakdown = expenses.reduce<Record<string, number>>((acc, e) => {
-    const cat = e.category || "Miscellaneous";
+    const cat = e.category || "Others";
     acc[cat] = round2((acc[cat] ?? 0) + (e.amount || 0));
     return acc;
   }, {});

@@ -331,30 +331,30 @@ const Map03: React.FC<Props> = ({ location, availableLocations, handleLocationSe
             <Path d="M128.072 123.237c9.656 1.73 10.2-1.871 11.518-9.082" />
           </G>
 
-          {/* ---- CITY: Butre ---- */}
+          {/* ---- CITY: Sabah ---- */}
           <G strokeWidth={1.96}>
-            {renderDot(30.834, 63.642, 'btn-butre', 'butre', '#ccc')}
-            {location === 'butre' && (
+            {renderDot(30.834, 63.642, 'btn-sabah', 'sabah', '#ccc')}
+            {location === 'sabah' && (
               <Path
                 fill="#e92828"
                 stroke="#520"
                 strokeWidth={0.588}
                 d="M30.666 54.419c-6.987.09.168 9.371.168 9.371s7.268-9.427 0-9.371h-.168z"
-                testID="marker-butre"
+                testID="marker-sabah"
               />
             )}
           </G>
 
-          {/* ---- CITY: Tabbith ---- */}
+          {/* ---- CITY: KL ---- */}
           <G strokeWidth={1.96}>
-            {renderDot(80.432, 37.224, 'btn-tabbith', 'tabbith', '#08a200')}
-            {location === 'tabbith' && (
+            {renderDot(80.432, 37.224, 'btn-kl', 'kl', '#08a200')}
+            {location === 'kl' && (
               <Path
                 fill="#e92828"
                 stroke="#520"
                 strokeWidth={0.588}
                 d="M80.264 27.957c-6.987.088.167 9.18.167 9.18s7.268-9.235 0-9.18a8.3 8.3 0 00-.167 0z"
-                testID="marker-tabbith"
+                testID="marker-kl"
               />
             )}
           </G>
@@ -437,8 +437,8 @@ const Map03: React.FC<Props> = ({ location, availableLocations, handleLocationSe
       {availableLocations.map((loc) => {
         // Map03 uses transforms, so we need to account for them
         const basePositions: { [key: string]: { x: number; y: number; transform?: { x: number; y: number } } } = {
-          butre: { x: 30.834, y: 63.642 },
-          tabbith: { x: 80.432, y: 37.224 },
+          sabah: { x: 30.834, y: 63.642 },
+          kl: { x: 80.432, y: 37.224 },
           oskah: { x: 23.925, y: 35.07, transform: { x: 0.816, y: 1.218 } },
           luci: { x: 23.925, y: 35.07, transform: { x: -31.115, y: 20.743 } },
           clionne: { x: 23.925, y: 35.07, transform: { x: 82.13, y: 36.105 } },

@@ -45,10 +45,10 @@ const effects: EffectList = {
 
 const mapDefault: Map = {
   slug: 'default',
-  locations: [Locations.Melaka, Locations.Tabbith, Locations.Butre],
+  locations: [Locations.Melaka, Locations.KL, Locations.Sabah],
   routes: [
     {
-      locations: [Locations.Melaka, Locations.Tabbith],
+      locations: [Locations.Melaka, Locations.KL],
       sections: [
         {
           dangers: [
@@ -91,7 +91,7 @@ const mapDefault: Map = {
       ],
     },
     {
-      locations: [Locations.Butre, Locations.Tabbith],
+      locations: [Locations.Sabah, Locations.KL],
       sections: [
         {
           dangers: [
@@ -124,7 +124,7 @@ const mapDefault: Map = {
       ],
     },
     {
-      locations: [Locations.Butre, Locations.Melaka],
+      locations: [Locations.Sabah, Locations.Melaka],
       sections: [
         {
           dangers: [
@@ -149,8 +149,8 @@ const mapTwo: Map = {
   slug: 'two',
   locations: [
     Locations.Melaka,
-    Locations.Tabbith,
-    Locations.Butre,
+    Locations.KL,
+    Locations.Sabah,
     Locations.Luci,
     Locations.Clionne,
   ],
@@ -176,7 +176,7 @@ const mapTwo: Map = {
       ],
     },
     {
-      locations: [Locations.Luci, Locations.Butre],
+      locations: [Locations.Luci, Locations.Sabah],
       sections: [
         {
           dangers: [
@@ -209,7 +209,7 @@ const mapTwo: Map = {
       ],
     },
     {
-      locations: [Locations.Tabbith, Locations.Clionne],
+      locations: [Locations.KL, Locations.Clionne],
       sections: [
         {
           dangers: [
@@ -272,8 +272,8 @@ const mapThree: Map = {
   slug: 'three',
   locations: [
     Locations.Melaka,
-    Locations.Tabbith,
-    Locations.Butre,
+    Locations.KL,
+    Locations.Sabah,
     Locations.Luci,
     Locations.Clionne,
     Locations.Winnie,

@@ -8,12 +8,12 @@ const upgradesData: UpgradeData = {
     prices: [
       {
         price: 350,
-        locations: [Locations.Melaka, Locations.Tabbith, Locations.Luci],
+        locations: [Locations.Melaka, Locations.KL, Locations.Luci],
         guildOnly: false,
       },
       {
         price: 250,
-        locations: [Locations.Butre],
+        locations: [Locations.Sabah],
         guildOnly: true,
       },
     ],
@@ -67,12 +67,12 @@ const upgradesData: UpgradeData = {
     prices: [
       {
         price: 9000,
-        locations: [Locations.Melaka, Locations.Butre],
+        locations: [Locations.Melaka, Locations.Sabah],
         guildOnly: false,
       },
       {
         price: 6000,
-        locations: [Locations.Tabbith],
+        locations: [Locations.KL],
         guildOnly: true,
       },
     ],
@@ -101,7 +101,7 @@ const upgradesData: UpgradeData = {
       },
       {
         price: 300,
-        locations: [Locations.Clionne, Locations.Tabbith],
+        locations: [Locations.Clionne, Locations.KL],
         guildOnly: true,
       },
     ],
@@ -112,7 +112,7 @@ const upgradesData: UpgradeData = {
     prices: [
       {
         price: 150,
-        locations: [Locations.Melaka, Locations.Butre, Locations.Tabbith],
+        locations: [Locations.Melaka, Locations.Sabah, Locations.KL],
         guildOnly: false,
       },
     ],
@@ -123,7 +123,7 @@ const upgradesData: UpgradeData = {
     prices: [
       {
         price: 80,
-        locations: [Locations.Winnie, Locations.Butre, Locations.Tabbith, Locations.Luci],
+        locations: [Locations.Winnie, Locations.Sabah, Locations.KL, Locations.Luci],
         guildOnly: false,
       },
     ],
@@ -134,7 +134,7 @@ const upgradesData: UpgradeData = {
     prices: [
       {
         price: 350,
-        locations: [Locations.Melaka, Locations.Tigi, Locations.Butre, Locations.Clionne],
+        locations: [Locations.Melaka, Locations.Tigi, Locations.Sabah, Locations.Clionne],
         guildOnly: false,
       },
     ],
@@ -145,7 +145,7 @@ const upgradesData: UpgradeData = {
     prices: [
       {
         price: 350,
-        locations: [Locations.Butre, Locations.Tabbith, Locations.Luci, Locations.Winnie],
+        locations: [Locations.Sabah, Locations.KL, Locations.Luci, Locations.Winnie],
         guildOnly: false,
       },
     ],

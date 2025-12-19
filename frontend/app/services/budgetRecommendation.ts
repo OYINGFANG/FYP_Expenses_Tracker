@@ -10,7 +10,7 @@ const recommendedAllocation: Record<string, number> = {
   Entertainment: 0.05,
   Shopping: 0.05,
   Savings: 0.20,
-  Miscellaneous: 0.04,
+  Others: 0.04,
 };
 
 export class BudgetRecommendationService {
@@ -54,8 +54,8 @@ export class BudgetRecommendationService {
       const diff = round2(monthlyBudget - adjustedTotal);
 
       if (Math.abs(diff) > 0.01) {
-        const adjustCat = normalized["Miscellaneous"] !== undefined
-          ? "Miscellaneous"
+        const adjustCat = normalized["Others"] !== undefined
+          ? "Others"
           : Object.entries(normalized).sort((a, b) => b[1] - a[1])[0][0];
         normalized[adjustCat] = round2((normalized[adjustCat] || 0) + diff);
       }
@@ -111,7 +111,7 @@ export class BudgetRecommendationService {
 
   private getCategoryTotals(expenses: Expense[]): Record<string, number> {
     return expenses.reduce<Record<string, number>>((acc, e) => {
-      const cat = e.category || "Miscellaneous";
+      const cat = e.category || "Others";
       acc[cat] = (acc[cat] ?? 0) + (e.amount || 0);
       return acc;
     }, {});

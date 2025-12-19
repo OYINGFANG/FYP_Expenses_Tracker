@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Slices } from '../store/gameSlice';
 import upgradesData from '../data/upgrades';
 import Table from '../common/Table';
@@ -73,16 +73,14 @@ const ToolsPanel = () => {
 
   const buyTableActions = (id: string) => (
     <View style={styles.tableActions}>
-      <View style={styles.actionButtonWrapper}>
-        <TouchableOpacity
-          onPress={() => handleInfoClick(id)}
-          style={styles.compactButton}
-        >
-          <Text style={styles.compactButtonText}>
-            {formatMessage({ id: 'market__buy__table___btn_info', defaultMessage: 'Info' })}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        onPress={() => handleInfoClick(id)}
+        style={styles.compactButton}
+      >
+        <Text style={styles.compactButtonText}>
+          {formatMessage({ id: 'market__buy__table___btn_info', defaultMessage: 'Info' })}
+        </Text>
+      </TouchableOpacity>
       {!gameState.flags[`upgrade__${id}`] && (
         <TouchableOpacity
           onPress={() => handleBuyUpgrade(id, getUpgradePrice(id))}
@@ -105,7 +103,11 @@ const ToolsPanel = () => {
 
   return (
     <View style={styles.container} testID="tools-panel">
-      <View style={styles.content}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
+      >
         <Text style={styles.title}>
           <FormattedMessage id="upgrades__buy_title" />
         </Text>
@@ -118,7 +120,7 @@ const ToolsPanel = () => {
             sortDir="asc"
           />
         </View>
-      </View>
+      </ScrollView>
       {isModalOpen && (
         <ToolInfoModal selectedItemId={selectedItemId} closeInfoModal={closeInfoModal} />
       )}
@@ -130,8 +132,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
     padding: 16,
+    paddingBottom: 24,
   },
   title: {
     fontSize: 20,
@@ -144,16 +150,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
   },
   tableActions: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    flexWrap: 'nowrap',
     justifyContent: 'flex-start',
     width: '100%',
-    flexShrink: 1,
-  },
-  actionButtonWrapper: {
-    marginRight: 8,
-    flexShrink: 0,
+    gap: 8,
   },
   compactButton: {
     paddingVertical: 6,

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View, Text, StyleSheet, Animated } from 'react-native';
 import { useIntl } from 'react-intl';
 import { useGameSliceDispatch } from './store/reduxHooks';
@@ -19,6 +19,8 @@ const TabButton: React.FC<Props> = ({ slug, isActive }) => {
 
   const underline = useRef(new Animated.Value(isActive ? 1 : 0)).current;
   const bgFill = useRef(new Animated.Value(0)).current; // subtle background sweep on press
+  const [textWidth, setTextWidth] = useState(0);
+  const [buttonWidth, setButtonWidth] = useState(0);
 
   useEffect(() => {
     Animated.timing(underline, {
@@ -51,12 +53,12 @@ const TabButton: React.FC<Props> = ({ slug, isActive }) => {
   // Interpolations for animations
   const underlineWidth = underline.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
+    outputRange: [0, textWidth || 100],
   });
-  const underlineLeft = underline.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['50%', '0%'],
-  });
+  // Calculate left position to center the underline under the text
+  const underlineLeft = buttonWidth > 0 && textWidth > 0 
+    ? (buttonWidth - textWidth) / 2 
+    : 0;
   const bgWidth = bgFill.interpolate({
     inputRange: [0, 1],
     outputRange: ['0%', '100%'],
@@ -75,6 +77,10 @@ const TabButton: React.FC<Props> = ({ slug, isActive }) => {
       onPressOut={onPressOut}
       testID={`tab-button-${slug}`}
       style={styles.button}
+      onLayout={(event) => {
+        const { width } = event.nativeEvent.layout;
+        setButtonWidth(width);
+      }}
     >
       {/* Press background sweep */}
       <Animated.View
@@ -88,6 +94,22 @@ const TabButton: React.FC<Props> = ({ slug, isActive }) => {
         ]}
       />
 
+      <View style={styles.textContainer}>
+        <Text
+          style={[
+            styles.label,
+            { color: isActive ? '#fdba74' : '#d1d5db' }, // orange-300 vs gray-300
+          ]}
+          numberOfLines={1}
+          onLayout={(event) => {
+            const { width } = event.nativeEvent.layout;
+            setTextWidth(width);
+          }}
+        >
+          {label.toUpperCase()}
+        </Text>
+      </View>
+
       {/* Active underline */}
       <Animated.View
         pointerEvents="none"
@@ -95,21 +117,11 @@ const TabButton: React.FC<Props> = ({ slug, isActive }) => {
           styles.underline,
           {
             width: underlineWidth as any,
-            left: underlineLeft as any,
             backgroundColor: isActive ? '#f97316' : '#f97316',
+            left: underlineLeft,
           },
         ]}
       />
-
-      <Text
-        style={[
-          styles.label,
-          { color: isActive ? '#fdba74' : '#d1d5db' }, // orange-300 vs gray-300
-        ]}
-        numberOfLines={1}
-      >
-        {label.toUpperCase()}
-      </Text>
     </Pressable>
   );
 };
@@ -118,11 +130,15 @@ const styles = StyleSheet.create({
   button: {
     position: 'relative',
     paddingVertical: 16, // ~py-4
-    paddingHorizontal: 12,
+    paddingHorizontal: 3,
     minWidth: 72,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+  },
+  textContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   label: {
     fontSize: 16, // ~lg on larger screens; tweak as needed
@@ -135,6 +151,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     height: 8, // h-2
+    alignSelf: 'center',
   },
   pressBg: {
     position: 'absolute',

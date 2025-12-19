@@ -2,8 +2,8 @@ import { ImageSourcePropType } from 'react-native';
 
 // Use require so TS doesn’t need *.png module types
 const ImgLoc1BG: ImageSourcePropType = require('../../../assets/images/melaka.png');
-const ImgLoc2BG: ImageSourcePropType = require('../../../assets/images/melaka.png');
-const ImgLoc3BG: ImageSourcePropType = require('../../../assets/images/melaka.png');
+const ImgLoc2BG: ImageSourcePropType = require('../../../assets/images/kl.png');
+const ImgLoc3BG: ImageSourcePropType = require('../../../assets/images/sabah.png');
 const ImgLoc4BG: ImageSourcePropType = require('../../../assets/images/melaka.png');
 const ImgLoc5BG: ImageSourcePropType = require('../../../assets/images/melaka.png');
 const ImgLoc6BG: ImageSourcePropType = require('../../../assets/images/melaka.png');
@@ -20,9 +20,9 @@ export const getBgImg = (location?: string): ImageSourcePropType => {
       return ImgLoc5BG;
     case 'luci':
       return ImgLoc4BG;
-    case 'butre':
+    case 'sabah':
       return ImgLoc3BG;
-    case 'tabbith':
+    case 'kl':
       return ImgLoc2BG;
     case 'melaka':
       return ImgLoc1BG;

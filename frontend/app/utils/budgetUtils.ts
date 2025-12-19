@@ -48,7 +48,8 @@ export const recommendedPercentages: Record<string, number> = {
   Education: 2,
   Housing: 25,
   Savings: 20,
-  Miscellaneous: 1,
+  Debt: 0, // Debt payments - users can allocate budget for debt repayment
+  Others: 1,
 };
 
 export const getAllBudgetCategories = (): string[] => Object.keys(recommendedPercentages);
@@ -258,7 +259,7 @@ export const getUserMonthlySpendByCategory = async (
     const snap = await getDocs(qRef);
     snap.forEach((d) => {
       const data = d.data() as any;
-      const cat = (data.exp_category as string) || "Miscellaneous";
+      const cat = (data.exp_category as string) || "Others";
       const amt = Number(data.exp_total) || 0;
       add(cat, amt);
     });
@@ -271,7 +272,7 @@ export const getUserMonthlySpendByCategory = async (
         const data = d.data() as any;
         const dt = String(data.exp_date || "");
         if (dt >= startISO && dt < endISO) {
-          const cat = (data.exp_category as string) || "Miscellaneous";
+          const cat = (data.exp_category as string) || "Others";
           const amt = Number(data.exp_total) || 0;
           add(cat, amt);
         }

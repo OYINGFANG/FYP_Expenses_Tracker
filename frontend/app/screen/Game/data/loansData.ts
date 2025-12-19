@@ -8,15 +8,15 @@ const loansData: LoanOfferingsData = {
     term: 10,
     guildOnly: false,
   },
-  tabbith: {
-    location: Locations.Tabbith,
+  kl: {
+    location: Locations.KL,
     amount: 1200,
     markup: 200,
     term: 300,
     guildOnly: true,
   },
-  butre: {
-    location: Locations.Butre,
+  sabah: {
+    location: Locations.Sabah,
     amount: 5000,
     markup: 500,
     term: 200,

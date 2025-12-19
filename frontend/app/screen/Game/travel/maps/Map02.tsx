@@ -316,7 +316,7 @@ const Map02: React.FC<Props> = ({ location, availableLocations, handleLocationSe
             <Path d="M112.718 70.937c10.67.309 21.652-8.003 20.554-19.063" />
           </G>
 
-          {/* ---- CITY: Butre ---- */}
+          {/* ---- CITY: Sabah ---- */}
           <G strokeWidth={1.618} transform="matrix(1.21109 0 0 1.21206 -19.054 -8.907)">
             <Circle
               cx={30.834}
@@ -324,21 +324,21 @@ const Map02: React.FC<Props> = ({ location, availableLocations, handleLocationSe
               r={3.626}
               stroke="#520"
               strokeWidth={0.485}
-              testID="btn-butre"
-              fill={getDotFill('butre')}
+              testID="btn-sabah"
+              fill={getDotFill('sabah')}
             />
-            {location === 'butre' && (
+            {location === 'sabah' && (
               <Path
                 fill="#e92828"
                 stroke="#520"
                 strokeWidth={0.485}
                 d="M30.666 54.419c-6.987.09.168 9.371.168 9.371s7.268-9.427 0-9.371h-.168z"
-                testID="marker-butre"
+                testID="marker-sabah"
               />
             )}
           </G>
 
-          {/* ---- CITY: Tabbith ---- */}
+          {/* ---- CITY: KL ---- */}
           <G strokeWidth={1.618} transform="matrix(1.21109 0 0 1.21206 -19.054 -8.907)">
             <Circle
               cx={80.432}
@@ -346,16 +346,16 @@ const Map02: React.FC<Props> = ({ location, availableLocations, handleLocationSe
               r={3.626}
               stroke="#520"
               strokeWidth={0.485}
-              testID="btn-tabbith"
-              fill={getDotFill('tabbith')}
+              testID="btn-kl"
+              fill={getDotFill('kl')}
             />
-            {location === 'tabbith' && (
+            {location === 'kl' && (
               <Path
                 fill="#e92828"
                 stroke="#520"
                 strokeWidth={0.485}
                 d="M80.264 27.957c-6.987.088.167 9.18.167 9.18s7.268-9.235 0-9.18a8.3 8.3 0 00-.167 0z"
-                testID="marker-tabbith"
+                testID="marker-kl"
               />
             )}
           </G>
@@ -433,8 +433,8 @@ const Map02: React.FC<Props> = ({ location, availableLocations, handleLocationSe
       {/* Touch overlays for location dots */}
       {availableLocations.map((loc) => {
         const positions: { [key: string]: { x: number; y: number } } = {
-          butre: { x: 30.834, y: 63.642 },
-          tabbith: { x: 80.432, y: 37.224 },
+          sabah: { x: 30.834, y: 63.642 },
+          kl: { x: 80.432, y: 37.224 },
           oskah: { x: 23.925, y: 35.07 },
           luci: { x: 23.925, y: 35.07 },
           clionne: { x: 23.925, y: 35.07 },

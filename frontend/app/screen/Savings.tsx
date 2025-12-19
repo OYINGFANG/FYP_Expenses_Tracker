@@ -26,6 +26,7 @@ import {
   upsertSavingsGoal,
   addSavingsContribution,
   deleteSavingsGoalDeep,
+  checkAndAwardSavingsBadges,
   BADGE_DEFINITIONS,
   type SavingsGoal,
   type SavingsContribution,
@@ -531,25 +532,244 @@ function LabeledInput(props: React.ComponentProps<typeof TextInput> & { label: s
 }
 
 /* ---------- Badge Card Component ---------- */
-function BadgeCard({ badge, earned }: { badge: Omit<SavingsBadge, "earnedAt">; earned: boolean }) {
+function BadgeCard({ badge, earned, onPress }: { badge: Omit<SavingsBadge, "earnedAt">; earned: boolean; onPress: () => void }) {
+  // Cycle through colors for earned badges
+  const badgeColors: { bg: readonly [string, string]; border: string; icon: string }[] = [
+    { bg: ["#D1FAE5", "#A7F3D0"] as const, border: "#10B981", icon: "#059669" }, // Green
+    { bg: ["#DBEAFE", "#BFDBFE"] as const, border: "#3B82F6", icon: "#2563EB" }, // Blue
+    { bg: ["#F3E8FF", "#E9D5FF"] as const, border: "#8B5CF6", icon: "#7C3AED" }, // Purple
+    { bg: ["#FEF3C7", "#FDE68A"] as const, border: "#F59E0B", icon: "#D97706" }, // Amber
+    { bg: ["#FED7AA", "#FDBA74"] as const, border: "#F97316", icon: "#EA580C" }, // Orange
+  ];
+  const badgeList = Object.values(BADGE_DEFINITIONS);
+  const colorIndex = badgeList.findIndex((b: any) => b.id === badge.id) % badgeColors.length;
+  const badgeColor = earned ? badgeColors[colorIndex] : { bg: ["#F3F4F6", "#E5E7EB"] as const, border: "#D1D5DB", icon: MUTED };
+
   return (
-    <View style={[styles.badgeCard, !earned && styles.badgeCardLocked]}>
-      <View style={[styles.badgeIconContainer, !earned && styles.badgeIconContainerLocked]}>
-        {earned ? (
-          <Ionicons name={badge.icon as any} size={32} color={BRAND_GREEN} />
-        ) : (
-          <>
-            <Ionicons name={badge.icon as any} size={32} color={MUTED} />
-            <View style={styles.badgeLockOverlay}>
-              <Ionicons name="lock-closed" size={16} color="#fff" />
-            </View>
-          </>
-        )}
-      </View>
-      <Text style={[styles.badgeTitle, !earned && styles.badgeTitleLocked]} numberOfLines={1}>
+    <TouchableOpacity 
+      style={[styles.badgeCard, !earned && styles.badgeCardLocked]}
+      activeOpacity={0.8}
+      onPress={onPress}
+    >
+      {earned ? (
+        <LinearGradient
+          colors={badgeColor.bg}
+          style={styles.badgeIconContainer}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        >
+          <View style={[styles.badgeIconInner, { borderColor: badgeColor.border }]}>
+            <Ionicons name={badge.icon as any} size={36} color={badgeColor.icon} />
+          </View>
+          {/* Sparkle effect for earned badges */}
+          <View style={styles.badgeSparkle}>
+            <Ionicons name="sparkles" size={16} color={badgeColor.icon} />
+          </View>
+        </LinearGradient>
+      ) : (
+        <View style={[styles.badgeIconContainer, styles.badgeIconContainerLocked]}>
+          <Ionicons name={badge.icon as any} size={32} color={MUTED} />
+          <View style={styles.badgeLockOverlay}>
+            <Ionicons name="lock-closed" size={16} color="#fff" />
+          </View>
+        </View>
+      )}
+      <Text style={[styles.badgeTitle, !earned && styles.badgeTitleLocked]} numberOfLines={2}>
         {badge.title}
       </Text>
-    </View>
+      {earned && (
+        <View style={styles.badgeRibbon}>
+          <Ionicons name="checkmark-circle" size={12} color={badgeColor.icon} />
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+/* ---------- Badge Details Modal Component ---------- */
+function BadgeDetailsModal({
+  open,
+  badge,
+  earned,
+  goals,
+  onClose,
+  currency,
+}: {
+  open: boolean;
+  badge: Omit<SavingsBadge, "earnedAt"> | null;
+  earned: boolean;
+  goals: SavingsGoal[];
+  onClose: () => void;
+  currency: Currency;
+}) {
+  if (!badge) return null;
+
+  // Calculate progress based on badge type
+  const getBadgeProgress = () => {
+    const completedGoals = goals.filter((g) => g.currentAmount >= g.targetAmount && g.targetAmount > 0);
+    
+    switch (badge.id) {
+      case "first_goal_completed": {
+        const current = completedGoals.length;
+        const target = 1;
+        return { current, target, progress: Math.min((current / target) * 100, 100) };
+      }
+      case "three_goals_completed": {
+        const current = completedGoals.length;
+        const target = 3;
+        return { current, target, progress: Math.min((current / target) * 100, 100) };
+      }
+      case "five_goals_completed": {
+        const current = completedGoals.length;
+        const target = 5;
+        return { current, target, progress: Math.min((current / target) * 100, 100) };
+      }
+      case "big_goal_completed": {
+        const bigCompletedGoals = goals.filter(
+          (g) => g.currentAmount >= g.targetAmount && g.targetAmount >= 5000
+        );
+        const current = bigCompletedGoals.length;
+        const target = 1;
+        return { current, target, progress: Math.min((current / target) * 100, 100) };
+      }
+      case "streak_3_months": {
+        // This would require contributions data, for now return 0
+        return { current: 0, target: 3, progress: 0, note: "Requires contributions in 3 consecutive months" };
+      }
+      default:
+        return { current: 0, target: 1, progress: 0 };
+    }
+  };
+
+  const progress = getBadgeProgress();
+  const badgeColors: { bg: readonly [string, string]; border: string; icon: string; gradient: readonly [string, string] }[] = [
+    { bg: ["#D1FAE5", "#A7F3D0"] as const, border: "#10B981", icon: "#059669", gradient: ["#ECFDF5", "#D1FAE5"] as const },
+    { bg: ["#DBEAFE", "#BFDBFE"] as const, border: "#3B82F6", icon: "#2563EB", gradient: ["#EFF6FF", "#DBEAFE"] as const },
+    { bg: ["#F3E8FF", "#E9D5FF"] as const, border: "#8B5CF6", icon: "#7C3AED", gradient: ["#F5F3FF", "#F3E8FF"] as const },
+    { bg: ["#FEF3C7", "#FDE68A"] as const, border: "#F59E0B", icon: "#D97706", gradient: ["#FFFBEB", "#FEF3C7"] as const },
+    { bg: ["#FED7AA", "#FDBA74"] as const, border: "#F97316", icon: "#EA580C", gradient: ["#FFF7ED", "#FED7AA"] as const },
+  ];
+  const badgeList = Object.values(BADGE_DEFINITIONS);
+  const colorIndex = badgeList.findIndex((b: any) => b.id === badge.id) % badgeColors.length;
+  const badgeColor = earned ? badgeColors[colorIndex] : { bg: ["#F3F4F6", "#E5E7EB"] as const, border: "#D1D5DB", icon: MUTED, gradient: ["#F9FAFB", "#F3F4F6"] as const };
+
+  const getRequirementText = () => {
+    switch (badge.id) {
+      case "first_goal_completed":
+        return "Complete your first savings goal";
+      case "three_goals_completed":
+        return "Complete 3 savings goals";
+      case "five_goals_completed":
+        return "Complete 5 savings goals";
+      case "big_goal_completed":
+        return "Complete a savings goal worth RM 5,000 or more";
+      case "streak_3_months":
+        return "Make contributions in 3 consecutive months";
+      default:
+        return badge.description;
+    }
+  };
+
+  return (
+    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.badgeDetailsModalOverlay}>
+        <TouchableOpacity 
+          style={styles.badgeDetailsModalBackdrop}
+          activeOpacity={1}
+          onPress={onClose}
+        />
+        <View style={styles.badgeDetailsModalCard}>
+          <LinearGradient
+            colors={badgeColor.gradient}
+            style={styles.badgeDetailsModalGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            {/* Close button */}
+            <TouchableOpacity onPress={onClose} style={styles.badgeDetailsModalClose}>
+              <Ionicons name="close" size={24} color={BRAND_DARK} />
+            </TouchableOpacity>
+
+            {/* Badge Icon */}
+            <View style={[styles.badgeDetailsIconContainer, !earned && styles.badgeDetailsIconContainerLocked]}>
+              {earned ? (
+                <LinearGradient
+                  colors={badgeColor.bg}
+                  style={styles.badgeDetailsIconGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name={badge.icon as any} size={64} color={badgeColor.icon} />
+                </LinearGradient>
+              ) : (
+                <View style={styles.badgeDetailsIconLocked}>
+                  <Ionicons name={badge.icon as any} size={64} color={MUTED} />
+                  <View style={styles.badgeDetailsLockOverlay}>
+                    <Ionicons name="lock-closed" size={32} color="#fff" />
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Badge Title */}
+            <Text style={styles.badgeDetailsTitle}>{badge.title}</Text>
+
+            {/* Earned Status */}
+            {earned ? (
+              <View style={styles.badgeDetailsEarnedBadge}>
+                <Ionicons name="checkmark-circle" size={16} color={badgeColor.icon} />
+                <Text style={[styles.badgeDetailsEarnedText, { color: badgeColor.icon }]}>Earned</Text>
+              </View>
+            ) : (
+              <Text style={styles.badgeDetailsLockedText}>Locked</Text>
+            )}
+
+            {/* Description */}
+            <Text style={styles.badgeDetailsDescription}>{badge.description}</Text>
+
+            {/* Requirement */}
+            <View style={styles.badgeDetailsRequirement}>
+              <Ionicons name="information-circle" size={18} color={MUTED} />
+              <Text style={styles.badgeDetailsRequirementText}>{getRequirementText()}</Text>
+            </View>
+
+            {/* Progress Section */}
+            {!earned && (
+              <View style={styles.badgeDetailsProgressSection}>
+                <View style={styles.badgeDetailsProgressHeader}>
+                  <Text style={styles.badgeDetailsProgressLabel}>Progress</Text>
+                  <Text style={styles.badgeDetailsProgressValue}>
+                    {progress.current} / {progress.target}
+                  </Text>
+                </View>
+                <View style={styles.badgeDetailsProgressBar}>
+                  <View 
+                    style={[
+                      styles.badgeDetailsProgressFill, 
+                      { width: `${progress.progress}%`, backgroundColor: badgeColor.icon }
+                    ]} 
+                  />
+                </View>
+                {progress.note && (
+                  <Text style={styles.badgeDetailsProgressNote}>{progress.note}</Text>
+                )}
+              </View>
+            )}
+
+            {/* Close Button */}
+            <TouchableOpacity 
+              onPress={onClose} 
+              style={[styles.badgeDetailsModalButton, { backgroundColor: earned ? badgeColor.icon : MUTED }]}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.badgeDetailsModalButtonText}>
+                {earned ? "Got it!" : "Close"}
+              </Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -565,19 +785,62 @@ function AchievementModal({
 }) {
   if (!badge) return null;
 
+  // Get badge color
+  const badgeColors: { bg: readonly [string, string]; border: string; icon: string; gradient: readonly [string, string] }[] = [
+    { bg: ["#D1FAE5", "#A7F3D0"] as const, border: "#10B981", icon: "#059669", gradient: ["#ECFDF5", "#D1FAE5"] as const },
+    { bg: ["#DBEAFE", "#BFDBFE"] as const, border: "#3B82F6", icon: "#2563EB", gradient: ["#EFF6FF", "#DBEAFE"] as const },
+    { bg: ["#F3E8FF", "#E9D5FF"] as const, border: "#8B5CF6", icon: "#7C3AED", gradient: ["#F5F3FF", "#F3E8FF"] as const },
+    { bg: ["#FEF3C7", "#FDE68A"] as const, border: "#F59E0B", icon: "#D97706", gradient: ["#FFFBEB", "#FEF3C7"] as const },
+    { bg: ["#FED7AA", "#FDBA74"] as const, border: "#F97316", icon: "#EA580C", gradient: ["#FFF7ED", "#FED7AA"] as const },
+  ];
+  const badgeList = Object.values(BADGE_DEFINITIONS);
+  const colorIndex = badgeList.findIndex((b: any) => b.id === badge.id) % badgeColors.length;
+  const badgeColor = badgeColors[colorIndex];
+
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.achievementModalOverlay}>
+        <TouchableOpacity 
+          style={styles.achievementModalBackdrop}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={styles.achievementModalCard}>
-          <View style={styles.achievementModalIconContainer}>
-            <Ionicons name={badge.icon as any} size={64} color={BRAND_GREEN} />
-          </View>
-          <Text style={styles.achievementModalTitle}>New Achievement!</Text>
-          <Text style={styles.achievementModalBadgeTitle}>{badge.title}</Text>
-          <Text style={styles.achievementModalDescription}>{badge.description}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.achievementModalButton}>
-            <Text style={styles.achievementModalButtonText}>Got it</Text>
-          </TouchableOpacity>
+          <LinearGradient
+            colors={badgeColor.gradient}
+            style={styles.achievementModalGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            {/* Celebration icons */}
+            <View style={styles.celebrationIcons}>
+              <Ionicons name="sparkles" size={24} color={badgeColor.icon} style={{ opacity: 0.6 }} />
+            </View>
+            
+            <LinearGradient
+              colors={badgeColor.bg}
+              style={styles.achievementModalIconContainer}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={[styles.achievementModalIconInner, { borderColor: badgeColor.border }]}>
+                <Ionicons name={badge.icon as any} size={72} color={badgeColor.icon} />
+              </View>
+            </LinearGradient>
+            
+            <Text style={styles.achievementModalTitle}>🎉 New Achievement!</Text>
+            <Text style={[styles.achievementModalBadgeTitle, { color: badgeColor.icon }]}>{badge.title}</Text>
+            <Text style={styles.achievementModalDescription}>{badge.description}</Text>
+            
+            <TouchableOpacity 
+              onPress={onClose} 
+              style={[styles.achievementModalButton, { backgroundColor: badgeColor.icon }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="checkmark-circle" size={20} color="#fff" />
+              <Text style={styles.achievementModalButtonText}>Got it!</Text>
+            </TouchableOpacity>
+          </LinearGradient>
         </View>
       </View>
     </Modal>
@@ -602,6 +865,11 @@ export default function Savings() {
   const [newBadgeModalOpen, setNewBadgeModalOpen] = useState(false);
   const [newBadge, setNewBadge] = useState<SavingsBadge | null>(null);
   const [showCompletedGoals, setShowCompletedGoals] = useState(true);
+  
+  // Badge details modal state
+  const [badgeDetailsModalOpen, setBadgeDetailsModalOpen] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState<Omit<SavingsBadge, "earnedAt"> | null>(null);
+  const [selectedBadgeEarned, setSelectedBadgeEarned] = useState(false);
 
   // Filter states
   const [filterStatus, setFilterStatus] = useState<"All" | "Active" | "Completed" | "Overdue" | "Not Completed">("All");
@@ -918,6 +1186,28 @@ export default function Savings() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Achievements</Text>
+            <TouchableOpacity
+              onPress={async () => {
+                if (!userId) return Alert.alert("Not signed in", "Please sign in first.");
+                try {
+                  const newlyEarned = await checkAndAwardSavingsBadges(userId);
+                  if (newlyEarned.length > 0) {
+                    setNewBadge(newlyEarned[0]);
+                    setNewBadgeModalOpen(true);
+                    Alert.alert("Success!", `Earned ${newlyEarned.length} new badge(s)!`);
+                  } else {
+                    Alert.alert("Badge Check", "No new badges earned. Check the console logs for details about your goals.");
+                  }
+                } catch (e: any) {
+                  console.error("Manual badge check error:", e);
+                  Alert.alert("Error", "Failed to check badges. See console for details.");
+                }
+              }}
+              style={styles.refreshBadgeButton}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="refresh" size={18} color={BRAND_DARK} />
+            </TouchableOpacity>
           </View>
           <ScrollView
             horizontal
@@ -926,7 +1216,18 @@ export default function Savings() {
           >
             {sortedBadges.map((badgeDef) => {
               const earned = badges.some((b) => b.id === badgeDef.id);
-              return <BadgeCard key={badgeDef.id} badge={badgeDef} earned={earned} />;
+              return (
+                <BadgeCard 
+                  key={badgeDef.id} 
+                  badge={badgeDef} 
+                  earned={earned}
+                  onPress={() => {
+                    setSelectedBadge(badgeDef);
+                    setSelectedBadgeEarned(earned);
+                    setBadgeDetailsModalOpen(true);
+                  }}
+                />
+              );
             })}
           </ScrollView>
           </View>
@@ -1045,6 +1346,15 @@ export default function Savings() {
           setNewBadgeModalOpen(false);
           setNewBadge(null);
         }}
+      />
+
+      <BadgeDetailsModal
+        open={badgeDetailsModalOpen}
+        badge={selectedBadge}
+        earned={selectedBadgeEarned}
+        goals={goals}
+        onClose={() => setBadgeDetailsModalOpen(false)}
+        currency={currency}
       />
 
       {/* Filter Modal */}
@@ -1172,6 +1482,16 @@ const styles = StyleSheet.create({
     color: BRAND_DARK,
     fontSize: 18,
     fontWeight: "800",
+  },
+  refreshBadgeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#F0FDF4",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
   },
   toggleButton: {
     paddingHorizontal: 14,
@@ -1549,112 +1869,387 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   badgeCard: {
-    width: 100,
+    width: 110,
     alignItems: "center",
     backgroundColor: CARD_BG,
-    borderRadius: 18,
-    padding: 14,
+    borderRadius: 20,
+    padding: 16,
     marginRight: 10,
-    ...shadow(3, 0.1),
-    borderWidth: 1,
+    ...shadow(4, 0.15),
+    borderWidth: 2,
     borderColor: "#E5E7EB",
+    position: "relative",
   },
   badgeCardLocked: {
-    opacity: 0.6,
+    opacity: 0.5,
     backgroundColor: "#F9FAFB",
+    borderColor: "#D1D5DB",
   },
   badgeIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#D1FAE5",
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
+    marginBottom: 12,
     position: "relative",
+    borderWidth: 3,
+    overflow: "visible",
+  },
+  badgeIconInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#A7F3D0",
+    ...shadow(2, 0.2),
   },
   badgeIconContainerLocked: {
     backgroundColor: "#F3F4F6",
     borderColor: "#E5E7EB",
+    borderWidth: 2,
+  },
+  badgeSparkle: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadow(2, 0.3),
   },
   badgeLockOverlay: {
     position: "absolute",
     bottom: -4,
     right: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: BRAND_DARK,
     alignItems: "center",
     justifyContent: "center",
-    ...shadow(2, 0.2),
+    ...shadow(3, 0.3),
+    borderWidth: 2,
+    borderColor: "#fff",
   },
   badgeTitle: {
     fontSize: 12,
     fontWeight: "800",
     color: BRAND_DARK,
     textAlign: "center",
+    lineHeight: 16,
   },
   badgeTitleLocked: {
     color: MUTED,
   },
+  badgeRibbon: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadow(1, 0.2),
+  },
 
   achievementModalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
+  achievementModalBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   achievementModalCard: {
     backgroundColor: CARD_BG,
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: 28,
     width: "100%",
-    maxWidth: 320,
+    maxWidth: 340,
     alignItems: "center",
-    ...shadow(8, 0.2),
+    overflow: "hidden",
+    ...shadow(12, 0.3),
+    borderWidth: 3,
+    borderColor: "#FCD34D",
+  },
+  achievementModalGradient: {
+    width: "100%",
+    padding: 28,
+    alignItems: "center",
+    position: "relative",
+  },
+  celebrationIcons: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   achievementModalIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "#F0FDF4",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 20,
+    borderWidth: 4,
+    overflow: "visible",
+  },
+  achievementModalIconInner: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    ...shadow(4, 0.3),
   },
   achievementModalTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "900",
     color: BRAND_DARK,
-    marginBottom: 8,
+    marginBottom: 12,
+    textAlign: "center",
   },
   achievementModalBadgeTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: BRAND_GREEN,
-    marginBottom: 8,
+    fontSize: 22,
+    fontWeight: "900",
+    marginBottom: 12,
+    textAlign: "center",
   },
   achievementModalDescription: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
     color: MUTED,
     textAlign: "center",
-    marginBottom: 24,
-    lineHeight: 20,
+    marginBottom: 28,
+    lineHeight: 22,
+    paddingHorizontal: 8,
   },
   achievementModalButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    borderRadius: 16,
+    width: "100%",
+    justifyContent: "center",
+    ...shadow(4, 0.3),
+  },
+  achievementModalButtonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+
+  // Badge Details Modal Styles
+  badgeDetailsModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  badgeDetailsModalBackdrop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  badgeDetailsModalCard: {
+    backgroundColor: CARD_BG,
+    borderRadius: 24,
+    width: "100%",
+    maxWidth: 360,
+    alignItems: "center",
+    overflow: "hidden",
+    ...shadow(12, 0.3),
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+  },
+  badgeDetailsModalGradient: {
+    width: "100%",
+    padding: 24,
+    alignItems: "center",
+    position: "relative",
+  },
+  badgeDetailsModalClose: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+    ...shadow(2, 0.2),
+  },
+  badgeDetailsIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+    position: "relative",
+  },
+  badgeDetailsIconContainerLocked: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#E5E7EB",
+  },
+  badgeDetailsIconGradient: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+  },
+  badgeDetailsIconLocked: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#E5E7EB",
+    position: "relative",
+  },
+  badgeDetailsLockOverlay: {
+    position: "absolute",
+    bottom: -8,
+    right: -8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: BRAND_DARK,
+    alignItems: "center",
+    justifyContent: "center",
+    ...shadow(3, 0.3),
+    borderWidth: 3,
+    borderColor: "#fff",
+  },
+  badgeDetailsTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: BRAND_DARK,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  badgeDetailsEarnedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 12,
+    ...shadow(1, 0.1),
+  },
+  badgeDetailsEarnedText: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  badgeDetailsLockedText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: MUTED,
+    marginBottom: 12,
+  },
+  badgeDetailsDescription: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: BRAND_DARK,
+    textAlign: "center",
+    marginBottom: 16,
+    lineHeight: 22,
+  },
+  badgeDetailsRequirement: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+    width: "100%",
+  },
+  badgeDetailsRequirementText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "600",
+    color: MUTED,
+    lineHeight: 18,
+  },
+  badgeDetailsProgressSection: {
+    width: "100%",
+    marginBottom: 20,
+  },
+  badgeDetailsProgressHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  badgeDetailsProgressLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: BRAND_DARK,
+  },
+  badgeDetailsProgressValue: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: BRAND_DARK,
+  },
+  badgeDetailsProgressBar: {
+    height: 12,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 6,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  badgeDetailsProgressFill: {
+    height: "100%",
+    borderRadius: 6,
+  },
+  badgeDetailsProgressNote: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: MUTED,
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+  badgeDetailsModalButton: {
     paddingVertical: 14,
     paddingHorizontal: 32,
     borderRadius: 12,
     width: "100%",
     alignItems: "center",
+    ...shadow(4, 0.3),
   },
-  achievementModalButtonText: {
+  badgeDetailsModalButtonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "900",

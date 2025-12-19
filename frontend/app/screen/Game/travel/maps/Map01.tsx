@@ -158,46 +158,46 @@ const Map01: React.FC<Props> = ({ location, availableLocations, handleLocationSe
             {/* (You can keep adding the rest of your original <Path>/<G> blocks here) */}
           </G>
 
-          {/* ---- CITY: Butre ---- */}
+          {/* ---- CITY: Sabah ---- */}
           <G>
             <Circle
               cx={30.745}
               cy={64.311}
               r={2}
-              fill={getDotFill('butre')}
+              fill={getDotFill('sabah')}
               stroke="#520"
               strokeWidth={0.3}
-              testID="btn-butre"
+              testID="btn-sabah"
             />
-            {location === 'butre' && (
+            {location === 'sabah' && (
               <Path
                 fill="#e92828"
                 stroke="#520"
                 strokeWidth={0.3}
                 d="M30.758 60.016c-3.171.041.076 4.296.076 4.296s3.299-4.322 0-4.296h-.076z"
-                testID="marker-butre"
+                testID="marker-sabah"
               />
             )}
           </G>
 
-          {/* ---- CITY: Tabbith ---- */}
+          {/* ---- CITY: KL ---- */}
           <G>
             <Circle
               cx={80.88}
               cy={37.673}
               r={2}
-              fill={getDotFill('tabbith')}
+              fill={getDotFill('kl')}
               stroke="#520"
               strokeWidth={0.3}
-              testID="btn-tabbith"
+              testID="btn-kl"
             />
-            {location === 'tabbith' && (
+            {location === 'kl' && (
               <Path
                 fill="#e92828"
                 stroke="#520"
                 strokeWidth={0.3}
                 d="M80.823 33.147c-3.171.041.076 4.296.076 4.296s3.299-4.322 0-4.296h-.076z"
-                testID="marker-tabbith"
+                testID="marker-kl"
               />
             )}
           </G>
@@ -274,8 +274,8 @@ const Map01: React.FC<Props> = ({ location, availableLocations, handleLocationSe
       {/* Touch overlays for location dots */}
       {availableLocations.map((loc) => {
         const positions: { [key: string]: { x: number; y: number } } = {
-          butre: { x: 30.745, y: 64.311 },
-          tabbith: { x: 80.88, y: 37.673 },
+          sabah: { x: 30.745, y: 64.311 },
+          kl: { x: 80.88, y: 37.673 },
           melaka: { x: 23.925, y: 35.53 },
         };
         const pos = positions[loc];

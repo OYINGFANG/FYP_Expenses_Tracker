@@ -40,19 +40,29 @@ const Table: React.FC<TableProps> = ({ data, fieldLabels, actions, sortField, so
   return (
     <View style={styles.table}>
         <View style={styles.header}>
-          {fieldLabels.map((field) => (
-            <View 
-              key={field.slug} 
-              style={[
-                styles.headerCell, 
-                useFlexWidths ? styles.headerCellFlex : { width: regularColumnWidth }
-              ]}
-            >
-              <Text style={styles.headerText}>
-                <FormattedMessage id={field.titleKey} />
-              </Text>
-            </View>
-          ))}
+          {fieldLabels.map((field, index) => {
+            // Determine flex style based on column index
+            let flexStyle = styles.headerCellFlex;
+            if (index === 0) {
+              flexStyle = styles.headerCellFlexLarge;
+            } else if (index === 1 || index === 2) {
+              // Price and Owned columns get smaller flex
+              flexStyle = styles.headerCellFlexSmall;
+            }
+            return (
+              <View 
+                key={field.slug} 
+                style={[
+                  styles.headerCell, 
+                  useFlexWidths ? flexStyle : { width: regularColumnWidth }
+                ]}
+              >
+                <Text style={styles.headerText}>
+                  <FormattedMessage id={field.titleKey} />
+                </Text>
+              </View>
+            );
+          })}
           {actions && (
             <View 
               style={[
@@ -66,15 +76,23 @@ const Table: React.FC<TableProps> = ({ data, fieldLabels, actions, sortField, so
         </View>
         {sortedData.map((row, idx) => (
           <View key={row.id || idx} style={[styles.row, idx % 2 === 0 && styles.rowEven]}>
-            {fieldLabels.map((field) => {
+            {fieldLabels.map((field, index) => {
               // Allow text wrapping for text fields (not boolean)
               const isTextField = typeof row[field.slug] !== 'boolean';
+              // Determine flex style based on column index
+              let flexStyle = styles.cellFlex;
+              if (index === 0) {
+                flexStyle = styles.cellFlexLarge;
+              } else if (index === 1 || index === 2) {
+                // Price and Owned columns get smaller flex
+                flexStyle = styles.cellFlexSmall;
+              }
               return (
                 <View 
                   key={field.slug} 
                   style={[
                     styles.cell, 
-                    useFlexWidths ? styles.cellFlex : { width: regularColumnWidth }
+                    useFlexWidths ? flexStyle : { width: regularColumnWidth }
                   ]}
                 >
                   <Text 
@@ -126,6 +144,16 @@ const styles = StyleSheet.create({
     flexBasis: 0,
     minWidth: 80,
   },
+  headerCellFlexLarge: {
+    flex: 2.5,
+    flexBasis: 0,
+    minWidth: 120,
+  },
+  headerCellFlexSmall: {
+    flex: 0.6,
+    flexBasis: 0,
+    minWidth: 60,
+  },
   actionsHeaderCellFlex: {
     flex: 1,
     flexBasis: 0,
@@ -155,12 +183,23 @@ const styles = StyleSheet.create({
     borderRightColor: '#E5E7EB',
     justifyContent: 'flex-start',
     alignItems: 'flex-start',
-    flexWrap: 'wrap',
   },
   cellFlex: {
     flex: 1,
     flexBasis: 0,
     minWidth: 80,
+    maxWidth: '100%',
+  },
+  cellFlexLarge: {
+    flex: 2.5,
+    flexBasis: 0,
+    minWidth: 120,
+    maxWidth: '100%',
+  },
+  cellFlexSmall: {
+    flex: 0.6,
+    flexBasis: 0,
+    minWidth: 60,
     maxWidth: '100%',
   },
   actionsCellFlex: {
@@ -177,7 +216,7 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     fontSize: 14,
     flexShrink: 1,
-    width: '100%',
+    flexWrap: 'wrap',
   },
 });
 

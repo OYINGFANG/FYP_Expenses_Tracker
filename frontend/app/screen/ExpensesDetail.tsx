@@ -47,6 +47,7 @@ const CATEGORY_ORDER = [
   "Healthcare",
   "Education",
   "Savings",
+  "Debt",
   "Others",
 ] as const;
 
@@ -60,6 +61,7 @@ const CATEGORY_COLORS: Record<(typeof CATEGORY_ORDER)[number], string> = {
   Healthcare: "#74B9FF",
   Education: "#FD79A8",
   Savings: "#FDCB6E",
+  Debt: "#DC2626",
   Others: "#B2BEC3",
 };
 
@@ -73,6 +75,7 @@ const CATEGORY_ICONS: Record<(typeof CATEGORY_ORDER)[number], any> = {
   Healthcare: "medical",
   Education: "school",
   Savings: "wallet",
+  Debt: "card-outline",
   Others: "ellipsis-horizontal",
 };
 
@@ -580,8 +583,8 @@ export default function ExpensesDetail() {
               <Text style={styles.summaryValue}>{formatCurrency(totalExpense, currency)}</Text>
             </View>
 
+            </View>
           </View>
-        </View>
 
         {/* Search & filters */}
         <View style={styles.filtersCard}>

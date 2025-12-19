@@ -148,12 +148,24 @@ export async function upsertSavingsGoal(
 
   // Check and award badges after goal is updated/created
   // This is especially important when currentAmount might reach targetAmount
-  return await checkAndAwardSavingsBadges(userId);
+  // If goal was updated with a new currentAmount, pass it to avoid stale reads
+  const updatedGoalOverride =
+    goal.id && goal.currentAmount !== undefined
+      ? {
+          goalId: goal.id,
+          currentAmount: goal.currentAmount,
+          targetAmount: goal.targetAmount || 0,
+          name: goal.name || "",
+        }
+      : undefined;
+
+  return await checkAndAwardSavingsBadges(userId, updatedGoalOverride);
 }
 
 /**
  * Add a contribution and atomically increment the goal's current_amount.
  * Uses a transaction to ensure consistency.
+ * Also creates an expense record to deduct from income.
  * Also checks and awards badges after the contribution is added.
  */
 export async function addSavingsContribution(
@@ -164,6 +176,8 @@ export async function addSavingsContribution(
   const goalRef = doc(db, "SAVINGS_GOALS", goalId);
   const contributionsCol = collection(goalRef, "CONTRIBUTIONS");
 
+  let updatedGoalData: { currentAmount: number; targetAmount: number; goalName: string } | null = null;
+
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(goalRef);
     if (!snap.exists()) throw new Error("Savings goal not found");
@@ -172,6 +186,11 @@ export async function addSavingsContribution(
     const current = Number(data.current_amount) || 0;
     const contributionAmount = Number(payload.amount) || 0;
     const nextAmount = current + contributionAmount;
+    const targetAmount = Number(data.target_amount) || 0;
+    const name = data.name || "Savings Goal";
+
+    // Store the updated goal data for badge checking and expense record
+    updatedGoalData = { currentAmount: nextAmount, targetAmount, goalName: name };
 
     const contribRef = doc(contributionsCol);
     tx.set(contribRef, {
@@ -189,8 +208,54 @@ export async function addSavingsContribution(
     });
   });
 
+  console.log(`[Contribution] Added ${payload.amount} to goal ${goalId}. New amount: ${updatedGoalData?.currentAmount}, Target: ${updatedGoalData?.targetAmount}, Completed: ${updatedGoalData ? updatedGoalData.currentAmount >= updatedGoalData.targetAmount : false}`);
+
+  // Create an expense record to deduct from income
+  // This makes the accounting logic correct: money saved = money spent (allocated to savings)
+  // Run in parallel with badge check for better performance
+  const expensePromise = (async () => {
+    try {
+      const contributionDate = payload.date || new Date();
+      const expId = "EXP" + new Date().getTime();
+      const expenseData = {
+        exp_id: expId,
+        user_id: userPath(userId),
+        exp_category: "Savings", // Category for savings contributions
+        exp_payment_method: payload.source || "Cash", // Use source as payment method, default to Cash
+        exp_total: Number(payload.amount) || 0,
+        exp_notes: `Savings contribution to: ${updatedGoalData?.goalName || "Savings Goal"}${payload.note ? ` - ${payload.note}` : ""}`,
+        exp_date: contributionDate.toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      await addDoc(collection(db, "EXPENSES"), expenseData);
+      console.log(`[Contribution] Created expense record for savings contribution: ${expId}`);
+    } catch (expenseError) {
+      // Log error but don't fail the contribution - expense creation is secondary
+      console.error("[Contribution] Failed to create expense record:", expenseError);
+    }
+  })();
+
   // Check and award badges after contribution is added
-  return await checkAndAwardSavingsBadges(userId);
+  // Pass the updated goal data directly to avoid race conditions with Firestore reads
+  // This ensures the badge check uses the correct currentAmount value
+  const badgePromise = checkAndAwardSavingsBadges(
+    userId,
+    updatedGoalData
+      ? {
+          goalId,
+          currentAmount: updatedGoalData.currentAmount,
+          targetAmount: updatedGoalData.targetAmount,
+          name: updatedGoalData.goalName,
+        }
+      : undefined
+  );
+
+  // Wait for both to complete (but don't block on expense creation)
+  await Promise.all([badgePromise, expensePromise]);
+
+  return await badgePromise;
 }
 
 /**
@@ -342,9 +407,15 @@ async function getAllUserContributions(userId: string): Promise<SavingsContribut
 /**
  * Check and award savings badges based on current goals and contributions.
  * Returns newly earned badges.
+ * @param userId - The user ID
+ * @param updatedGoalOverride - Optional: Updated goal data to use instead of reading from Firestore (avoids race conditions)
  */
-export async function checkAndAwardSavingsBadges(userId: string): Promise<SavingsBadge[]> {
+export async function checkAndAwardSavingsBadges(
+  userId: string,
+  updatedGoalOverride?: { goalId: string; currentAmount: number; targetAmount: number; name: string }
+): Promise<SavingsBadge[]> {
   try {
+    console.log(`[Badge Check] Starting badge check for user: ${userId}`);
     // Get all goals
     const goalsRef = collection(db, "SAVINGS_GOALS");
     const q = query(goalsRef, where("user_id", "==", userPath(userId)));
@@ -357,6 +428,24 @@ export async function checkAndAwardSavingsBadges(userId: string): Promise<Saving
         x.updated_at?.toDate?.() || (x.updated_at ? new Date(x.updated_at) : null);
       const deadlineDate =
         x.deadline?.toDate?.() || (x.deadline ? new Date(x.deadline) : null);
+
+      // If this goal was just updated, use the override data to avoid stale reads
+      if (updatedGoalOverride && d.id === updatedGoalOverride.goalId) {
+        console.log(`[Badge Check] Using updated goal override for ${d.id}: currentAmount=${updatedGoalOverride.currentAmount} (instead of ${Number(x.current_amount) || 0})`);
+        return {
+          id: d.id,
+          userId: x.user_id || userPath(userId),
+          name: updatedGoalOverride.name || x.name || "",
+          targetAmount: updatedGoalOverride.targetAmount || Number(x.target_amount) || 0,
+          currentAmount: updatedGoalOverride.currentAmount, // Use the updated value
+          monthlyTarget: x.monthly_target !== undefined ? Number(x.monthly_target) || null : null,
+          deadline: deadlineDate,
+          category: x.category || undefined,
+          notes: x.notes || undefined,
+          createdAt: createdAtDate,
+          updatedAt: updatedAtDate,
+        };
+      }
 
       return {
         id: d.id,
@@ -373,11 +462,17 @@ export async function checkAndAwardSavingsBadges(userId: string): Promise<Saving
       };
     });
 
+    console.log(`[Badge Check] Found ${goals.length} goals`);
+    goals.forEach((g) => {
+      console.log(`[Badge Check] Goal: ${g.name}, currentAmount: ${g.currentAmount}, targetAmount: ${g.targetAmount}, completed: ${g.currentAmount >= g.targetAmount && g.targetAmount > 0}`);
+    });
+
     // Get existing badges
     const badgesRef = collection(db, "SAVINGS_BADGES");
     const badgesQ = query(badgesRef, where("user_id", "==", userPath(userId)));
     const badgesSnap = await getDocs(badgesQ);
     const existingBadgeIds = new Set(badgesSnap.docs.map((d) => d.data().badge_id || d.id));
+    console.log(`[Badge Check] Existing badges: ${Array.from(existingBadgeIds).join(", ")}`);
 
     // Get all contributions for streak checking
     const contributions = await getAllUserContributions(userId);
@@ -394,8 +489,29 @@ export async function checkAndAwardSavingsBadges(userId: string): Promise<Saving
       switch (badgeId) {
         case "first_goal_completed": {
           // First time any goal is completed
-          const completedGoals = goals.filter((g) => g.currentAmount >= g.targetAmount && g.targetAmount > 0);
+          // Use a small tolerance (0.01) for floating point comparison issues
+          const tolerance = 0.01;
+          const completedGoals = goals.filter((g) => {
+            const isCompleted = g.targetAmount > 0 && (g.currentAmount >= g.targetAmount - tolerance);
+            if (isCompleted) {
+              console.log(`[Badge Check] Found completed goal: ${g.name} (currentAmount: ${g.currentAmount}, targetAmount: ${g.targetAmount}, difference: ${(g.currentAmount - g.targetAmount).toFixed(4)})`);
+            }
+            return isCompleted;
+          });
           shouldAward = completedGoals.length >= 1;
+          console.log(`[Badge Check] first_goal_completed: ${completedGoals.length} completed goals out of ${goals.length} total goals, shouldAward=${shouldAward}`);
+          if (completedGoals.length > 0) {
+            completedGoals.forEach((g, idx) => {
+              const progress = g.targetAmount > 0 ? (g.currentAmount / g.targetAmount) * 100 : 0;
+              console.log(`[Badge Check] Completed goal ${idx + 1}: ${g.name} - ${g.currentAmount}/${g.targetAmount} (${progress.toFixed(2)}%)`);
+            });
+          } else {
+            console.log(`[Badge Check] No completed goals found. All goals:`);
+            goals.forEach((g) => {
+              const progress = g.targetAmount > 0 ? (g.currentAmount / g.targetAmount) * 100 : 0;
+              console.log(`[Badge Check]   - ${g.name}: ${g.currentAmount}/${g.targetAmount} (${progress.toFixed(2)}%)`);
+            });
+          }
           break;
         }
 
@@ -444,6 +560,7 @@ export async function checkAndAwardSavingsBadges(userId: string): Promise<Saving
       }
 
       if (shouldAward) {
+        console.log(`[Badge Check] Awarding badge: ${badgeId}`);
         // Use a deterministic document ID to prevent duplicates: userId_badgeId
         // This ensures each user can only have one badge of each type, and badges persist across sign-ins
         // Sanitize userId to ensure valid Firestore document ID (no slashes, special chars)
@@ -461,6 +578,7 @@ export async function checkAndAwardSavingsBadges(userId: string): Promise<Saving
         );
 
         if (existingBadgeDoc.empty) {
+          console.log(`[Badge Check] Creating badge document: ${badgeDocId}`);
           // Award the badge with deterministic ID - this ensures persistence across sign-ins
           await setDoc(
             badgeRef,
@@ -484,6 +602,7 @@ export async function checkAndAwardSavingsBadges(userId: string): Promise<Saving
           };
 
           newlyEarned.push(earnedBadge);
+          console.log(`[Badge Check] Successfully awarded badge: ${badgeId}`);
 
           // Create notification for the earned badge
           await createBadgeNotification(earnedBadge).catch((e) => {
@@ -491,14 +610,30 @@ export async function checkAndAwardSavingsBadges(userId: string): Promise<Saving
           });
         } else {
           // Badge already exists, skip (this shouldn't happen due to existingBadgeIds check, but safety net)
-          console.log(`Badge ${badgeId} already exists for user ${userId}, skipping duplicate creation`);
+          console.log(`[Badge Check] Badge ${badgeId} already exists for user ${userId}, skipping duplicate creation`);
         }
+      } else {
+        console.log(`[Badge Check] Not awarding badge ${badgeId} (condition not met)`);
       }
     }
 
+    console.log(`[Badge Check] Completed. Newly earned badges: ${newlyEarned.length}`);
+    
+    // If no badges were earned but we expected some, log detailed info for debugging
+    if (newlyEarned.length === 0) {
+      const completedGoals = goals.filter((g) => g.currentAmount >= g.targetAmount && g.targetAmount > 0);
+      if (completedGoals.length > 0 && !existingBadgeIds.has("first_goal_completed")) {
+        console.warn(`[Badge Check] WARNING: Found ${completedGoals.length} completed goal(s) but first_goal_completed badge was not awarded.`);
+        console.warn(`[Badge Check] Existing badges: ${Array.from(existingBadgeIds)}`);
+        completedGoals.forEach((g) => {
+          console.warn(`[Badge Check] Completed goal details: ${g.name} - currentAmount: ${g.currentAmount}, targetAmount: ${g.targetAmount}`);
+        });
+      }
+    }
+    
     return newlyEarned;
   } catch (e) {
-    console.error("checkAndAwardSavingsBadges error:", e);
+    console.error("[Badge Check] Error in checkAndAwardSavingsBadges:", e);
     return [];
   }
 }

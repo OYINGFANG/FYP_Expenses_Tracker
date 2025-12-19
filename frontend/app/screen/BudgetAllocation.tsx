@@ -19,10 +19,10 @@ import {
   createUserBudget,
   calculateBudgetAllocation,
   validateBudgetPercentages,
-  getComprehensiveRecommendedBudget,
   getAllBudgetCategories,
   getCurrentMonthKey,
   getBudgetProgress,
+  recommendedPercentages,
   type BudgetAllocation,
   type BudgetRecord,
 } from "../utils/budgetUtils";
@@ -30,6 +30,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { checkAndCreateBudgetNotifications } from "../utils/budgetNotificationUtils";
 import { formatCurrency, subscribeUserCurrency, type Currency } from "../utils/currencyUtils";
 import { auth } from "../../firebase";
+import { subscribeUserDebts, type Debt } from "../utils/DebtUtils";
 
 /* ---------------------------
    Local helpers (month nav)
@@ -81,6 +82,7 @@ export default function BudgetAllocationScreen() {
   const [utilizationPct, setUtilizationPct] = useState(0);
   const [currency, setCurrency] = useState<Currency>("MYR");
   const [userId, setUserId] = useState<string | null>(null);
+  const [debts, setDebts] = useState<Debt[]>([]);
 
   // Colors & icons
   const categoryConfig: Record<string, { color: string; icon: string }> = {
@@ -93,7 +95,8 @@ export default function BudgetAllocationScreen() {
     Healthcare: { color: "#ef4444", icon: "medical" },
     Education: { color: "#06b6d4", icon: "school" },
     Savings: { color: "#10b981", icon: "bank" },
-    Miscellaneous: { color: "#6b7280", icon: "dots-horizontal" },
+    Debt: { color: "#DC2626", icon: "credit-card" },
+    Others: { color: "#6b7280", icon: "dots-horizontal" },
   };
 
   useEffect(() => {
@@ -116,6 +119,19 @@ export default function BudgetAllocationScreen() {
     })();
   }, []);
 
+  // Subscribe to user's debts for smart Debt budget recommendations
+  useEffect(() => {
+    if (!userId) return;
+    const unsub = subscribeUserDebts(
+      userId,
+      (rows) => setDebts(rows),
+      (err) => console.error("BudgetAllocation subscribeUserDebts error:", err)
+    );
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [userId]);
+
   useEffect(() => {
     if (!isEditable) return;
     const total = parseFloat(totalBudget) || 0;
@@ -124,6 +140,17 @@ export default function BudgetAllocationScreen() {
       setAllocations(newAllocations);
     }
   }, [totalBudget, percentages, isEditable]);
+
+  // Check if a month has a budget (for navigation validation)
+  const checkMonthHasBudget = async (mk: string): Promise<boolean> => {
+    try {
+      const budgetRecord = await getUserBudget(mk);
+      return !!budgetRecord;
+    } catch (error) {
+      console.error("Error checking month budget:", error);
+      return false;
+    }
+  };
 
   const loadForMonth = async (mk: string) => {
     try {
@@ -150,9 +177,14 @@ export default function BudgetAllocationScreen() {
       // Determine mode + editability by month selection
       const rel = cmpMonthKey(mk, todayKey);
       if (rel < 0) {
-        // past month — track only, not editable
-        setMode("track");
-        setIsEditable(false);
+        // past month — track only if budget exists, else plan (disabled)
+        if (budgetRecord) {
+          setMode("track");
+          setIsEditable(false);
+        } else {
+          setMode("plan");
+          setIsEditable(false);
+        }
       } else if (rel === 0) {
         // current month — track if saved, else plan/edit
         if (budgetRecord) {
@@ -257,13 +289,74 @@ export default function BudgetAllocationScreen() {
       Alert.alert("Error", "Please enter a valid total budget amount first");
       return;
     }
-    const recommended = getComprehensiveRecommendedBudget(total);
+    
+    // Calculate total monthly debt payments from actual debt data
+    const totalMonthlyDebtPayments = debts.reduce((sum: number, debt: Debt) => sum + (debt.monthlyPayment || 0), 0);
+    const debtPercentage = total > 0 ? (totalMonthlyDebtPayments / total) * 100 : 0;
+    
+    // Create smart recommendations with Debt based on actual debt data
+    const smartPercentages = { ...recommendedPercentages };
+    if (totalMonthlyDebtPayments > 0) {
+      // Set Debt percentage based on actual monthly debt payments
+      smartPercentages.Debt = Math.min(Math.max(debtPercentage, 0), 50); // Cap at 50% of budget
+    } else {
+      // If no debts, keep Debt at 0%
+      smartPercentages.Debt = 0;
+    }
+    
+    // Ensure Others is always included with at least 1%
+    if (!smartPercentages.Others || smartPercentages.Others < 1) {
+      smartPercentages.Others = 1;
+    }
+    
+    // Normalize percentages to ensure they sum to 100%
+    const currentSum = Object.values(smartPercentages).reduce((s, v) => s + v, 0);
+    if (Math.abs(currentSum - 100) > 0.01) { // Allow small floating point differences
+      // If sum exceeds 100%, proportionally reduce all categories except Debt and Others
+      if (currentSum > 100) {
+        const excess = currentSum - 100;
+        const categoriesToReduce = Object.keys(smartPercentages).filter(
+          cat => cat !== "Debt" && cat !== "Others"
+        );
+        const totalReducible = categoriesToReduce.reduce(
+          (sum, cat) => sum + (smartPercentages[cat] || 0), 0
+        );
+        
+        if (totalReducible > 0) {
+          // Proportionally reduce other categories
+          categoriesToReduce.forEach(cat => {
+            const current = smartPercentages[cat] || 0;
+            const reduction = (current / totalReducible) * excess;
+            smartPercentages[cat] = Math.max(0, current - reduction);
+          });
+        } else {
+          // If no other categories to reduce, reduce Others (but keep at least 1%)
+          smartPercentages.Others = Math.max(1, (smartPercentages.Others || 1) - excess);
+        }
+      } else {
+        // If sum is less than 100%, add the difference to Others
+        const deficit = 100 - currentSum;
+        smartPercentages.Others = (smartPercentages.Others || 0) + deficit;
+      }
+    }
+    
+    const recommended = {
+      totalBudget: total,
+      allocations: calculateBudgetAllocation(total, smartPercentages),
+      percentages: smartPercentages,
+    };
+    
     setPercentages(recommended.percentages);
     setAllocations(recommended.allocations);
     setEditMode({});
+    
+    const debtMessage = totalMonthlyDebtPayments > 0
+      ? `\n\nDebt allocation: ${formatCurrency(totalMonthlyDebtPayments, currency)} (${debtPercentage.toFixed(1)}%) based on your current monthly debt payments.`
+      : "";
+    
     Alert.alert(
       "Success",
-      `Recommended budget allocation applied!\n\nAll ${Object.keys(recommended.percentages).length} categories have been allocated.`,
+      `Recommended budget allocation applied!\n\nAll ${Object.keys(recommended.percentages).length} categories have been allocated.${debtMessage}`,
       [{ text: "OK" }]
     );
   };
@@ -382,7 +475,24 @@ export default function BudgetAllocationScreen() {
         <View style={styles.monthSwitch}>
           <TouchableOpacity
             style={styles.monthNavBtn}
-            onPress={() => setMonthKey((mk) => shiftMonthKey(mk, -1))}
+            onPress={async () => {
+              const prevMonthKey = shiftMonthKey(monthKey, -1);
+              const rel = cmpMonthKey(prevMonthKey, todayKey);
+              
+              // Only validate for previous months (past months)
+              if (rel < 0) {
+                const hasBudget = await checkMonthHasBudget(prevMonthKey);
+                if (!hasBudget) {
+                  Alert.alert(
+                    "No Budget Found",
+                    `No budget has been set for ${formatMonthKey(prevMonthKey)}.`
+                  );
+                  return;
+                }
+              }
+              
+              setMonthKey(prevMonthKey);
+            }}
           >
             <Ionicons name="chevron-back" size={18} color="#1E3932" />
           </TouchableOpacity>
@@ -407,10 +517,30 @@ export default function BudgetAllocationScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modeBtn, mode === "track" && styles.modeBtnActive]}
-            onPress={() => setMode("track")}
+            style={[
+              styles.modeBtn,
+              mode === "track" && styles.modeBtnActive,
+              !existingBudget && styles.modeBtnDisabled,
+            ]}
+            onPress={() => {
+              if (existingBudget) {
+                setMode("track");
+              } else {
+                Alert.alert(
+                  "No Budget Plan",
+                  "Please create a budget plan for this month first before tracking spending."
+                );
+              }
+            }}
+            disabled={!existingBudget}
           >
-            <Text style={[styles.modeBtnText, mode === "track" && styles.modeBtnTextActive]}>
+            <Text
+              style={[
+                styles.modeBtnText,
+                mode === "track" && styles.modeBtnTextActive,
+                !existingBudget && styles.modeBtnTextDisabled,
+              ]}
+            >
               Track
             </Text>
           </TouchableOpacity>
@@ -613,20 +743,24 @@ export default function BudgetAllocationScreen() {
                           Remaining {formatCurrency(Math.max(0, alloc - sp), currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </Text>
                       </View>
-
-                      {over && (
-                        <View style={[styles.badge, styles.badgeDanger]}>
-                          <Ionicons name="alert-circle" size={12} color="#fff" />
-                          <Text style={styles.badgeText}>Exceeded</Text>
-                        </View>
-                      )}
-                      {!over && warn && (
-                        <View style={[styles.badge, styles.badgeWarn]}>
-                          <Ionicons name="time-outline" size={12} color="#fff" />
-                          <Text style={styles.badgeText}>80%+ used</Text>
-                        </View>
-                      )}
                     </View>
+
+                    {(over || warn) && (
+                      <View style={styles.badgeRow}>
+                        {over && (
+                          <View style={[styles.badge, styles.badgeDanger]}>
+                            <Ionicons name="alert-circle" size={12} color="#fff" />
+                            <Text style={styles.badgeText}>Exceeded</Text>
+                          </View>
+                        )}
+                        {!over && warn && (
+                          <View style={[styles.badge, styles.badgeWarn]}>
+                            <Ionicons name="time-outline" size={12} color="#fff" />
+                            <Text style={styles.badgeText}>80%+ used</Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
 
                     <View style={styles.spendBarTrack}>
                       <View
@@ -725,8 +859,10 @@ const styles = StyleSheet.create({
   },
   modeBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: "center" },
   modeBtnActive: { backgroundColor: "#1E3932" },
+  modeBtnDisabled: { opacity: 0.5, backgroundColor: "#E5E7EB" },
   modeBtnText: { fontWeight: "800", color: "#1E3932" },
   modeBtnTextActive: { color: "#fff" },
+  modeBtnTextDisabled: { color: "#9CA3AF" },
 
   totalBudgetCard: {
     backgroundColor: "#fff",
@@ -849,8 +985,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
-    flexWrap: "wrap",
   },
   spendText: { color: "#1E3932", fontSize: 12, fontWeight: "600" },
   remainChip: {
@@ -861,6 +997,12 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 999,
     backgroundColor: "#E6F4EE",
+  },
+  badgeRow: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   remainChipText: { color: "#1E3932", fontWeight: "800", fontSize: 11 },
   badge: {

@@ -29,10 +29,10 @@ function formatDateTime(iso?: string) {
     });
   }
 
-  return d.toLocaleString("en-MY", {
+  return d.toLocaleString("en-MY", { 
     day: "numeric",
-    month: "short",
-    hour: "2-digit",
+    month: "short", 
+    hour: "2-digit", 
     minute: "2-digit",
     hour12: true,
   });
@@ -81,7 +81,7 @@ export default function AddRecordSuccess() {
   const note = getParam("note");
 
   const isIncome = type === "Income";
-
+  
   // Load user's currency preference
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -164,31 +164,31 @@ export default function AddRecordSuccess() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
+      {/* Header */}
+      <View style={styles.header}>
           <TouchableOpacity
             onPress={() => router.push("/screen/Home")}
             style={styles.backBtn}
             activeOpacity={0.7}
           >
             <Ionicons name="close" size={24} color="#1E3932" />
-          </TouchableOpacity>
-        </View>
+        </TouchableOpacity>
+      </View>
 
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
           {/* Success Icon */}
-          <Animated.View
-            style={[
+        <Animated.View
+          style={[
               styles.successContainer,
-              {
-                opacity: fadeAnim,
-                transform: [{ scale: scaleAnim }],
-              },
-            ]}
-          >
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
             <Animated.View
               style={[
                 styles.checkCircle,
@@ -205,19 +205,19 @@ export default function AddRecordSuccess() {
             </Text>
             <Text style={styles.successSubtitle}>
               Your transaction has been saved successfully
-            </Text>
-          </Animated.View>
+          </Text>
+        </Animated.View>
 
           {/* Amount Card */}
-          <Animated.View
-            style={[
-              styles.amountCard,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
-            ]}
-          >
+        <Animated.View
+          style={[
+            styles.amountCard,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
             <LinearGradient
               colors={gradientColors}
               style={styles.amountCardGradient}
@@ -226,91 +226,91 @@ export default function AddRecordSuccess() {
             >
               <Text style={[styles.amountValue, { color: isIncome ? "#1E3932" : "#DC2626" }]}>
                 {formatCurrencyUtil(parseFloat(amount || "0") || 0, currency)}
-              </Text>
+            </Text>
             </LinearGradient>
-          </Animated.View>
+        </Animated.View>
 
-          {/* Details Card */}
-          <Animated.View
-            style={[
-              styles.detailsCard,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
-            ]}
-          >
-            <Text style={styles.detailsTitle}>Transaction Details</Text>
-
-            <DetailRow
-              icon="calendar-outline"
-              label="Date & Time"
-              value={formatDateTime(dateISO)}
-            />
+        {/* Details Card */}
+        <Animated.View
+          style={[
+            styles.detailsCard,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <Text style={styles.detailsTitle}>Transaction Details</Text>
+          
+          <DetailRow
+            icon="calendar-outline"
+            label="Date & Time"
+            value={formatDateTime(dateISO)}
+          />
 
             <DetailRow
               icon="pricetag-outline"
               label="Category"
               value={category}
             />
-
-            <DetailRow
-              icon="card-outline"
-              label="Payment Method"
+          
+          <DetailRow
+            icon="card-outline"
+            label="Payment Method"
               value={paymentMethod}
-            />
+          />
 
             {note && note.trim() && (
-              <View style={styles.noteSection}>
-                <View style={styles.noteHeader}>
+            <View style={styles.noteSection}>
+              <View style={styles.noteHeader}>
                   <Ionicons name="document-text-outline" size={18} color="#1E3932" />
-                  <Text style={styles.noteLabel}>Note</Text>
-                </View>
-                <Text style={styles.noteText}>{note}</Text>
+                <Text style={styles.noteLabel}>Note</Text>
               </View>
-            )}
-          </Animated.View>
+              <Text style={styles.noteText}>{note}</Text>
+            </View>
+          )}
+        </Animated.View>
 
-          {/* Action Buttons */}
-          <Animated.View
-            style={[
-              styles.actionsContainer,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
-            ]}
+        {/* Action Buttons */}
+        <Animated.View
+          style={[
+            styles.actionsContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() => router.push("/screen/Home")}
+            activeOpacity={0.8}
           >
-            <TouchableOpacity
-              style={styles.primaryBtn}
-              onPress={() => router.push("/screen/Home")}
-              activeOpacity={0.8}
-            >
               <Ionicons name="checkmark-circle" size={20} color="#fff" />
               <Text style={styles.primaryBtnText}>Done</Text>
+          </TouchableOpacity>
+
+          <View style={styles.secondaryBtns}>
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => router.push("/screen/AddRecord")}
+              activeOpacity={0.7}
+            >
+                <Ionicons name="add-circle-outline" size={18} color="#1E3932" />
+              <Text style={styles.secondaryBtnText}>Add Another</Text>
             </TouchableOpacity>
 
-            <View style={styles.secondaryBtns}>
-              <TouchableOpacity
-                style={styles.secondaryBtn}
-                onPress={() => router.push("/screen/AddRecord")}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add-circle-outline" size={18} color="#1E3932" />
-                <Text style={styles.secondaryBtnText}>Add Another</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.secondaryBtn}
-                onPress={() => router.push("/screen/ExpensesDetail")}
-                activeOpacity={0.7}
-              >
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={() => router.push("/screen/ExpensesDetail")}
+              activeOpacity={0.7}
+            >
                 <Ionicons name="list-outline" size={18} color="#1E3932" />
-                <Text style={styles.secondaryBtnText}>View All</Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </ScrollView>
+              <Text style={styles.secondaryBtnText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   },
   amountCard: {
     borderRadius: 10,
-    marginBottom: 12,
+    marginBottom: 15,
     overflow: "hidden",
     shadowColor: "#000",
     shadowOpacity: 0.08,
@@ -392,16 +392,15 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   amountCardGradient: {
-    padding: 18,
+    padding: 10,
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
   amountValue: {
-    fontSize: 40,
+    fontSize: 35,
     fontWeight: "900",
     color: "#1E3932",
-    marginBottom: 6,
     letterSpacing: -1,
   },
   amountLabel: {

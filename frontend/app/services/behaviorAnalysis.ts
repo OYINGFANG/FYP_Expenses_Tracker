@@ -165,7 +165,7 @@ export function analyzeSpendingBehavior(
       const expenseDate = safeDate(e.date!);
       return {
         ...e,
-        category: (e.category || "Miscellaneous").trim(),
+        category: (e.category || "Others").trim(),
         merchant: normalizedMerchant(e),
         ts: expenseDate.getTime(),
         monthKey: monthKey(expenseDate),
@@ -549,7 +549,7 @@ export function analyzeSpendingBehavior(
     if (opts.monthlyBudget && opts.monthlyBudget > 0) {
       const recommendedAllocation: Record<string, number> = {
         Food: 13, Shopping: 6, Bills: 12, Entertainment: 4, Transport: 10,
-        Healthcare: 7, Education: 2, Housing: 25, Savings: 20, Miscellaneous: 1,
+        Healthcare: 7, Education: 2, Housing: 25, Savings: 20, Others: 1,
       };
       const recommendedPct = (recommendedAllocation[topCategory] ?? 10) / 100;
       const recommendedAmount = recommendedPct * opts.monthlyBudget;
@@ -571,10 +571,10 @@ export function analyzeSpendingBehavior(
   if (opts.monthlyBudget && opts.monthlyBudget > 0) {
     const recommendedAllocation: Record<string, number> = {
       Food: 13, Shopping: 6, Bills: 12, Entertainment: 4, Transport: 10,
-      Healthcare: 7, Education: 2, Housing: 25, Savings: 20, Miscellaneous: 1,
+      Healthcare: 7, Education: 2, Housing: 25, Savings: 20, Others: 1,
     };
     for (const [cat, pct] of Object.entries(recommendedAllocation)) {
-      if (cat === "Miscellaneous" || cat === "Housing" || cat === "Savings") continue;
+      if (cat === "Others" || cat === "Housing" || cat === "Savings") continue;
       if (!monthByCategory[cat] || monthByCategory[cat] === 0) {
         const suggestedAmount = (pct / 100) * opts.monthlyBudget;
         insights.push({
@@ -792,7 +792,7 @@ function dedupeMessages(list: BehaviourInsight[]) {
 
 // Outliers by category using z-score > 2
 function detectOutliersByCategory(monthExpenses: any[]) {
-  const byCat = groupBy(monthExpenses, e => e.category || "Misc");
+  const byCat = groupBy(monthExpenses, e => e.category || "Others");
   const out: { id?: string; amount: number; category?: string; merchant?: string; zScore: number }[] = [];
   for (const [cat, items] of Object.entries(byCat)) {
     const amounts = items.map((e:any)=>e.amount);
