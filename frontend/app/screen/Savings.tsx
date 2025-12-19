@@ -603,6 +603,10 @@ export default function Savings() {
   const [newBadge, setNewBadge] = useState<SavingsBadge | null>(null);
   const [showCompletedGoals, setShowCompletedGoals] = useState(true);
 
+  // Filter states
+  const [filterStatus, setFilterStatus] = useState<"All" | "Active" | "Completed" | "Overdue" | "Not Completed">("All");
+  const [showFilterModal, setShowFilterModal] = useState(false);
+
   // Resolve user id and subscribe to goals
   useEffect(() => {
     (async () => {
@@ -712,6 +716,38 @@ export default function Savings() {
     () => goals.filter((g) => g.targetAmount > 0 && g.currentAmount >= g.targetAmount),
     [goals]
   );
+
+  // Filter goals based on selected filter
+  const filteredActiveGoals = useMemo(() => {
+    if (filterStatus === "Completed") {
+      return []; // Hide active goals when showing only completed
+    }
+    if (filterStatus === "All") return activeGoals;
+    if (filterStatus === "Active") {
+      return activeGoals.filter((g) => {
+        const overdue = getDaysOverdue(g.deadline || null);
+        return overdue === null; // Not overdue
+      });
+    }
+    if (filterStatus === "Overdue") {
+      return activeGoals.filter((g) => {
+        const overdue = getDaysOverdue(g.deadline || null);
+        return overdue !== null; // Is overdue
+      });
+    }
+    if (filterStatus === "Not Completed") {
+      return activeGoals; // All active (not completed) goals
+    }
+    return activeGoals;
+  }, [activeGoals, filterStatus]);
+
+  // Filter completed goals based on selected filter
+  const filteredCompletedGoals = useMemo(() => {
+    if (filterStatus === "All" || filterStatus === "Completed") {
+      return completedGoals;
+    }
+    return []; // Hide completed goals for other filters
+  }, [completedGoals, filterStatus]);
 
   // Sort badges: earned badges first, then unearned
   const sortedBadges = useMemo(() => {
@@ -898,8 +934,36 @@ export default function Savings() {
         {/* Active Goals List */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Active Goals ({activeGoals.length})</Text>
+            <Text style={styles.sectionTitle}>Active Goals ({filteredActiveGoals.length})</Text>
+            <TouchableOpacity
+              onPress={() => setShowFilterModal(true)}
+              style={styles.filterButton}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="filter" size={18} color={BRAND_DARK} />
+              <Text style={styles.filterButtonText}>Filter</Text>
+            </TouchableOpacity>
           </View>
+
+          {/* Active Filters Display */}
+          {filterStatus !== "All" && (
+            <View style={styles.activeFiltersContainer}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+                <View style={styles.activeFilterChip}>
+                  <Text style={styles.activeFilterText}>Status: {filterStatus}</Text>
+                  <TouchableOpacity onPress={() => setFilterStatus("All")}>
+                    <Ionicons name="close-circle" size={16} color={MUTED} />
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setFilterStatus("All")}
+                  style={styles.clearAllButton}
+                >
+                  <Text style={styles.clearAllText}>Clear All</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          )}
 
           {activeGoals.length === 0 ? (
             <View style={styles.card}>
@@ -909,8 +973,16 @@ export default function Savings() {
                 <Text style={styles.emptyText}>Tap the + button to create your first savings goal</Text>
               </View>
             </View>
+          ) : filteredActiveGoals.length === 0 ? (
+            <View style={styles.card}>
+              <View style={styles.empty}>
+                <Ionicons name="search-outline" size={56} color={MUTED} />
+                <Text style={styles.emptyTitle}>No goals match your filters</Text>
+                <Text style={styles.emptyText}>Try adjusting your filter options</Text>
+              </View>
+            </View>
           ) : (
-            activeGoals.map((goal) => (
+            filteredActiveGoals.map((goal) => (
               <GoalRow
                 key={goal.id}
                 goal={goal}
@@ -924,10 +996,10 @@ export default function Savings() {
         </View>
 
         {/* Completed Goals List */}
-        {completedGoals.length > 0 && (
+        {(filterStatus === "All" || filterStatus === "Completed") && completedGoals.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Completed Goals ({completedGoals.length})</Text>
+              <Text style={styles.sectionTitle}>Completed Goals ({filteredCompletedGoals.length})</Text>
               <TouchableOpacity
                 onPress={() => setShowCompletedGoals(!showCompletedGoals)}
                 style={styles.toggleButton}
@@ -937,7 +1009,7 @@ export default function Savings() {
             </View>
 
             {showCompletedGoals &&
-              completedGoals.map((goal) => (
+              filteredCompletedGoals.map((goal) => (
                 <GoalRow
                   key={goal.id}
                   goal={goal}
@@ -974,6 +1046,72 @@ export default function Savings() {
           setNewBadge(null);
         }}
       />
+
+      {/* Filter Modal */}
+      <Modal visible={showFilterModal} transparent animationType="slide" onRequestClose={() => setShowFilterModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalWrap}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Filter</Text>
+              <TouchableOpacity onPress={() => setShowFilterModal(false)}>
+                <Ionicons name="close" size={22} color={BRAND_DARK} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+              {/* Filter by Status */}
+              <View style={{ marginTop: 12 }}>
+                <Text style={styles.inputLabel}>Filter by Status</Text>
+                <View style={styles.filterOptionRow}>
+                  {(["All", "Active", "Overdue"] as const).map((status) => {
+                    const active = filterStatus === status;
+                    return (
+                      <TouchableOpacity
+                        key={status}
+                        onPress={() => setFilterStatus(status)}
+                        style={[styles.filterOption, active && styles.filterOptionActive]}
+                      >
+                        {status === "Active" && <Ionicons name="checkmark-circle" size={16} color={active ? "#fff" : BRAND_GREEN} />}
+                        {status === "Overdue" && <Ionicons name="alert-circle" size={16} color={active ? "#fff" : RED} />}
+                        <Text style={[styles.filterOptionText, active && { color: "#fff" }]}>{status}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Filter by Completion Status */}
+              <View style={{ marginTop: 20 }}>
+                <Text style={styles.inputLabel}>Filter by Completion</Text>
+                <View style={styles.filterOptionRow}>
+                  {(["Not Completed", "Completed"] as const).map((status) => {
+                    const active = filterStatus === status;
+                    return (
+                      <TouchableOpacity
+                        key={status}
+                        onPress={() => setFilterStatus(status)}
+                        style={[styles.filterOption, active && styles.filterOptionActive]}
+                      >
+                        {status === "Completed" && <Ionicons name="trophy" size={16} color={active ? "#fff" : BRAND_GREEN} />}
+                        {status === "Not Completed" && <Ionicons name="hourglass-outline" size={16} color={active ? "#fff" : MUTED} />}
+                        <Text style={[styles.filterOptionText, active && { color: "#fff" }]}>{status}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => setShowFilterModal(false)}
+              style={styles.modalPrimary}
+            >
+              <Ionicons name="checkmark-circle" size={18} color="#fff" />
+              <Text style={styles.modalPrimaryText}>Apply</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1021,11 +1159,11 @@ const styles = StyleSheet.create({
   },
 
   section: {
-    marginTop: 20,
+    marginTop: 10,
   },
   sectionHeader: {
     paddingHorizontal: 16,
-    marginBottom: 14,
+    marginBottom: 5,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1520,6 +1658,81 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "900",
+  },
+
+  filterButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  filterButtonText: {
+    color: BRAND_DARK,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  activeFiltersContainer: {
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  activeFilterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: CARD_BG,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    ...shadow(1, 0.05),
+  },
+  activeFilterText: {
+    color: BRAND_DARK,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  clearAllButton: {
+    backgroundColor: RED + "22",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: RED + "44",
+  },
+  clearAllText: {
+    color: RED,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  filterOptionRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+  },
+  filterOption: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: LINE_SOFT,
+    backgroundColor: "#fff",
+  },
+  filterOptionActive: {
+    backgroundColor: BRAND_DARK,
+    borderColor: BRAND_DARK,
+  },
+  filterOptionText: {
+    color: BRAND_DARK,
+    fontWeight: "800",
+    fontSize: 13,
   },
 });
 

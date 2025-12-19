@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -194,7 +195,7 @@ function DebtRow({
       {/* Header */}
       <View style={styles.debtHeader}>
         <View style={[styles.debtIcon, { backgroundColor: color + "22" }]}>
-          <Ionicons name={TYPE_ICON[d.type]} size={22} color={color} />
+          <Ionicons name={TYPE_ICON[d.type]} size={20} color={color} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.debtName}>{d.name || d.type}</Text>
@@ -202,10 +203,10 @@ function DebtRow({
         </View>
         <View style={styles.debtActions}>
           <TouchableOpacity onPress={onEdit} style={styles.actionBtn}>
-            <Ionicons name="create-outline" size={18} color={BRAND_DARK} />
+            <Ionicons name="create-outline" size={16} color={BRAND_DARK} />
           </TouchableOpacity>
           <TouchableOpacity onPress={onDelete} style={[styles.actionBtn, { backgroundColor: "#FFF1F2" }]}>
-            <Ionicons name="trash" size={16} color={RED} />
+            <Ionicons name="trash" size={14} color={RED} />
           </TouchableOpacity>
         </View>
       </View>
@@ -239,7 +240,7 @@ function DebtRow({
         ]}>
           {paymentStatus.paid ? (
             <>
-              <Ionicons name="checkmark-circle" size={18} color={BRAND_GREEN} />
+              <Ionicons name="checkmark-circle" size={16} color={BRAND_GREEN} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.paymentStatusTitle}>Paid this month ✓</Text>
                 {paymentStatus.amount && (
@@ -251,7 +252,7 @@ function DebtRow({
             </>
           ) : (
             <>
-              <Ionicons name="alert-circle" size={18} color={ORANGE} />
+              <Ionicons name="alert-circle" size={16} color={ORANGE} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.paymentStatusTitle}>Not paid this month</Text>
                 <Text style={styles.paymentStatusSubtext}>
@@ -965,35 +966,8 @@ export default function Debt() {
         {/* Health Score Card */}
         <View style={styles.healthScoreCardContainer}>
           <View style={styles.healthScoreCard}>
-            <View style={styles.scoreHeader}>
-              <View style={styles.scoreHeaderLeft}>
-                <View style={styles.scoreTitleRow}>
-                  <Text style={styles.scoreLabel}>Debt Health Score</Text>
-                </View>
-                <View style={styles.scoreStatusRow}>
-                  <View style={[styles.scoreStatusBadge, {
-                    backgroundColor: totals.healthScore >= 80 ? "#ECFDF5" : 
-                                     totals.healthScore >= 60 ? "#FFFBEB" : "#FEF2F2",
-                    borderColor: totals.healthScore >= 80 ? "#A7F3D0" : 
-                                 totals.healthScore >= 60 ? "#FDE68A" : "#FECACA"
-                  }]}>
-                    <Ionicons 
-                      name={totals.healthScore >= 80 ? "checkmark-circle" : 
-                            totals.healthScore >= 60 ? "checkmark-circle-outline" : "alert-circle"} 
-                      size={16} 
-                      color={totals.healthScore >= 80 ? "#059669" : 
-                             totals.healthScore >= 60 ? "#D97706" : "#DC2626"} 
-                    />
-                    <Text style={[styles.scoreTag, { 
-                      color: totals.healthScore >= 80 ? "#059669" : 
-                             totals.healthScore >= 60 ? "#D97706" : "#DC2626"
-                    }]}>
-                      {totals.healthScore >= 80 ? "Excellent" : 
-                       totals.healthScore >= 60 ? "Good" : "Needs Attention"}
-                    </Text>
-                  </View>
-                </View>
-              </View>
+            <View style={styles.scoreContentRow}>
+              {/* Left: Score Badge */}
               <View style={[styles.scoreBadge, {
                 backgroundColor: totals.healthScore >= 80 ? "#D1FAE5" : 
                                  totals.healthScore >= 60 ? "#FEF3C7" : "#FEE2E2"
@@ -1002,6 +976,50 @@ export default function Debt() {
                   color: totals.healthScore >= 80 ? "#059669" : 
                          totals.healthScore >= 60 ? "#D97706" : "#DC2626"
                 }]}>{totals.healthScore}</Text>
+              </View>
+
+              {/* Right: Title and Status */}
+              <View style={styles.scoreInfoColumn}>
+                <View style={styles.scoreTitleRow}>
+                  <Text style={styles.scoreLabel}>Debt Health Score</Text>
+                </View>
+                <Image
+                  source={
+                    totals.healthScore >= 0 && totals.healthScore <= 20
+                      ? require("../../assets/images/home-happy.png")
+                      : totals.healthScore >= 21 && totals.healthScore <= 40
+                      ? require("../../assets/images/home-sad.png")
+                      : totals.healthScore >= 41 && totals.healthScore <= 60
+                      ? require("../../assets/images/home-attention.png")
+                      : totals.healthScore >= 61 && totals.healthScore <= 80
+                      ? require("../../assets/images/home-noeye.png")
+                      : require("../../assets/images/home-angry.png")
+                  }
+                  style={styles.debtHealthScoreImage}
+                  resizeMode="contain"
+                />
+                {totals.healthScore < 60 ? (
+                  <View style={styles.needsAttentionRow}>
+                    <Ionicons name="warning" size={16} color="#DC2626" />
+                    <Text style={styles.needsAttentionTitle}>Needs Attention</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.scoreStatusBadge, {
+                    backgroundColor: totals.healthScore >= 80 ? "#ECFDF5" : "#FFFBEB",
+                    borderColor: totals.healthScore >= 80 ? "#A7F3D0" : "#FDE68A"
+                  }]}>
+                    <Ionicons 
+                      name={totals.healthScore >= 80 ? "checkmark-circle" : "checkmark-circle-outline"} 
+                      size={14} 
+                      color={totals.healthScore >= 80 ? "#059669" : "#D97706"} 
+                    />
+                    <Text style={[styles.scoreTag, { 
+                      color: totals.healthScore >= 80 ? "#059669" : "#D97706"
+                    }]}>
+                      {totals.healthScore >= 80 ? "Excellent" : "Good"}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
 
@@ -1079,7 +1097,7 @@ export default function Debt() {
 
                   <View style={styles.calculationBox}>
                     <View style={styles.calculationHeader}>
-                      <Ionicons name="calculator" size={18} color={BRAND_DARK} />
+                      <Ionicons name="calculator" size={16} color={BRAND_DARK} />
                       <Text style={styles.calculationTitle}>Score Calculation</Text>
                     </View>
                     <View style={styles.calculationTotal}>
@@ -1394,7 +1412,7 @@ function Subscore({
     <View style={[styles.subscoreCard, isInGradient && styles.subscoreCardInGradient]}>
       <View style={styles.subscoreHeader}>
         <View style={[styles.subscoreIconContainer, { backgroundColor: isInGradient ? "rgba(255, 255, 255, 0.2)" : color + "15" }]}>
-          {icon && <Ionicons name={icon as any} size={16} color={isInGradient ? "#FFFFFF" : color} />}
+          {icon && <Ionicons name={icon as any} size={14} color={isInGradient ? "#FFFFFF" : color} />}
         </View>
         <View style={styles.subscoreHeaderText}>
           <Text style={[styles.subscoreLabel, isInGradient && { color: textColor }]}>{label}</Text>
@@ -1479,7 +1497,8 @@ const styles = StyleSheet.create({
   healthScoreCard: {
     backgroundColor: "#115D59",
     borderRadius: 20,
-    padding: 20,
+    padding: 16,
+    ...shadow(3, 0.12),
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
@@ -1610,6 +1629,18 @@ const styles = StyleSheet.create({
     color: BRAND_DARK 
   },
 
+  scoreContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  scoreHeaderTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 16,
+  },
   scoreHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1619,11 +1650,21 @@ const styles = StyleSheet.create({
   scoreHeaderLeft: {
     flex: 1,
   },
+  scoreInfoColumn: {
+    flex: 1,
+    gap: 6,
+    position: "relative",
+  },
   scoreTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 0,
+  },
+  scoreDisplayContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
   },
   scoreRow: {
     flexDirection: "row",
@@ -1632,8 +1673,8 @@ const styles = StyleSheet.create({
     gap: 12
   },
   scoreBadge: {
-    width: 60,
-    height: 60,
+    width: 64,
+    height: 64,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -1645,6 +1686,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: -1
   },
+  scoreStatusContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 0,
+  },
   scoreStatusRow: {
     marginBottom: 0,
     marginTop: 0,
@@ -1652,17 +1698,40 @@ const styles = StyleSheet.create({
   scoreStatusBadge: {
     flexDirection: "row",
     alignItems: "center",
-
-    alignSelf: "flex-start",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     borderWidth: 1.5,
+    alignSelf: "flex-start",
+  },
+  needsAttentionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+  },
+  needsAttentionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#DC2626",
+  },
+  needsAttentionSubtext: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#991B1B",
   },
   scoreLabel: { 
     fontWeight: "800", 
     color: "#FFFFFF",
     fontSize: 15,
+  },
+  debtHealthScoreImage: {
+    width: 80,
+    height: 90,
+    position: "absolute",
+    right: -10,
+    top: -25,
   },
   scoreLabelWhite: { 
     fontWeight: "800", 
@@ -1762,13 +1831,13 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   factorsGrid: {
-    gap: 10,
-    marginBottom: 12,
+    gap: 8,
+
   },
   subscoreCard: {
     backgroundColor: CARD_BG,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 12,
     marginBottom: 0,
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -1782,15 +1851,15 @@ const styles = StyleSheet.create({
   subscoreHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   subscoreIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 12,
+    marginRight: 10,
   },
   subscoreHeaderText: {
     flex: 1,
@@ -1798,38 +1867,38 @@ const styles = StyleSheet.create({
   subscoreLabel: { 
     color: BRAND_DARK, 
     fontWeight: "800",
-    fontSize: 14,
+    fontSize: 13,
     marginBottom: 2,
   },
   subscoreWeight: {
     color: MUTED,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
   },
   subscoreBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    minWidth: 50,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 7,
+    minWidth: 44,
     alignItems: "center",
   },
   subscoreValue: { 
     fontWeight: "900",
-    fontSize: 16,
+    fontSize: 14,
   },
   subscoreDescription: {
     color: MUTED,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "500",
-    marginBottom: 12,
-    lineHeight: 16,
+    marginBottom: 8,
+    lineHeight: 14,
   },
   subscoreProgressContainer: {
-    height: 6,
+    height: 5,
     backgroundColor: "#F3F4F6",
     borderRadius: 3,
     overflow: "hidden",
-    marginBottom: 10,
+    marginBottom: 8,
   },
   subscoreProgressBar: {
     height: "100%",
@@ -1839,24 +1908,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: "#F3F4F6",
   },
   subscoreContributionLabel: {
     color: MUTED,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
   },
   subscoreContributionValue: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
   },
   breakdownInfo: {
     backgroundColor: "#F0F9FF",
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
+    padding: 10,
+    marginBottom: 5,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -1890,8 +1959,8 @@ const styles = StyleSheet.create({
   },
   calculationBox: {
     backgroundColor: "#FAFBFC",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 12,
+    padding: 12,
     marginTop: 4,
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -1909,11 +1978,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   calculationTitle: {
     color: BRAND_DARK,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "800",
   },
   calculationTitleWhite: {
@@ -1922,44 +1991,44 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   calculationSteps: {
-    gap: 10,
-    marginBottom: 12,
+    gap: 8,
+    marginBottom: 10,
   },
   calculationStep: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     backgroundColor: "#FFFFFF",
-    borderRadius: 8,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: "#F3F4F6",
   },
   calculationStepLabel: {
     color: MUTED,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
   },
   calculationStepValue: {
     color: BRAND_DARK,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
   },
   calculationDivider: {
     height: 1,
     backgroundColor: "#E5E7EB",
-    marginVertical: 12,
+    marginVertical: 10,
   },
   calculationTotal: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 8,
+    paddingTop: 1,
   },
   calculationTotalLabel: {
     color: BRAND_DARK,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "800",
   },
   calculationTotalLabelWhite: {
@@ -1968,7 +2037,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   calculationTotalValue: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: "900",
   },
   calculationTotalValueWhite: {
@@ -2023,10 +2092,10 @@ const styles = StyleSheet.create({
 
   debtCard: {
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     backgroundColor: CARD_BG,
-    borderRadius: 18,
-    padding: 18,
+    borderRadius: 14,
+    padding: 14,
     ...shadow(3, 0.1),
     borderWidth: 1,
     borderColor: "#E5E7EB",
@@ -2034,23 +2103,23 @@ const styles = StyleSheet.create({
   debtHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 10,
     gap: 10,
   },
   debtIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   debtName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "900",
     color: BRAND_DARK,
   },
   debtType: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: MUTED,
     marginTop: 2,
@@ -2060,30 +2129,30 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     backgroundColor: "#F0FDF4",
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "#D1FAE5",
   },
 
   progressSection: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
   progressBar: {
-    height: 8,
+    height: 6,
     backgroundColor: "#F3F4F6",
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
-    marginBottom: 6,
+    marginBottom: 5,
   },
   progressFill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 3,
   },
   progressText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "800",
     color: BRAND_DARK,
     textAlign: "right",
@@ -2092,9 +2161,9 @@ const styles = StyleSheet.create({
   balanceSection: {
     flexDirection: "row",
     backgroundColor: "#F0FDF4",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#D1FAE5",
   },
@@ -2104,16 +2173,16 @@ const styles = StyleSheet.create({
   balanceDivider: {
     width: 1,
     backgroundColor: LINE_SOFT,
-    marginHorizontal: 12,
+    marginHorizontal: 10,
   },
   balanceLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     color: MUTED,
-    marginBottom: 4,
+    marginBottom: 3,
   },
   balanceValue: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "900",
     color: BRAND_DARK,
   },
@@ -2122,16 +2191,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    marginBottom: 10,
+    borderRadius: 10,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
   timelineText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: MUTED,
     flex: 1,
@@ -2140,11 +2209,11 @@ const styles = StyleSheet.create({
   paymentStatusSection: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    marginBottom: 10,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 9,
+    marginBottom: 8,
   },
   paymentStatusPaid: {
     backgroundColor: BRAND_GREEN + "11",
@@ -2157,13 +2226,13 @@ const styles = StyleSheet.create({
     borderColor: ORANGE + "33",
   },
   paymentStatusTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "800",
     color: BRAND_DARK,
     marginBottom: 2,
   },
   paymentStatusSubtext: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "600",
     color: MUTED,
   },

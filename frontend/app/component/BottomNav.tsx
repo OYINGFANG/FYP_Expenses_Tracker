@@ -111,7 +111,7 @@ const BottomNav = () => {
       >
         <View style={styles.centerIcon}>
           <Image
-            source={require("@/assets/images/Auriicon.png")}
+            source={require("@/assets/images/main.png")}
             style={styles.centerIconImage}
             resizeMode="contain"
           />
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    marginTop: 4,
+    marginTop: 2,
     color: "#fff",
     fontWeight: "500",
   },
@@ -242,8 +242,8 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   centerIconImage: {
-    width: "155%",
-    height: "155%",
+    width: "85%",
+    height: "85%",
     resizeMode: "contain",
   },
 });

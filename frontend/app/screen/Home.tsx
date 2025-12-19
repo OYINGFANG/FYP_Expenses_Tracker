@@ -8,6 +8,7 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import BottomNav from "../component/BottomNav";
@@ -1203,22 +1204,44 @@ const debtHealth = useMemo(() => {
               activeOpacity={0.8}
               onPress={() => router.push("/screen/Debt")}
             >
-              <Ionicons name="trophy" size={24} color="#fff" style={styles.statIcon} />
-              <Text style={styles.statLabel}>Health Score</Text>
-
-              <Text style={styles.statValue}>
-                {debtHealth ? `${debtHealth.healthScore}%` : "—"}
-              </Text>
-
-              <Text style={styles.statSubtext}>
-                {debtHealth
-                  ? debtHealth.healthScore >= 80
-                    ? "Excellent"
-                    : debtHealth.healthScore >= 60
-                    ? "Good standing"
-                    : "Needs attention"
-                  : "Add your debts to see score"}
-              </Text>
+              <View style={styles.healthScoreHeader}>
+                <Ionicons name="trophy" size={24} color="#fff" />
+                <Text style={styles.statLabel}>Health Score</Text>
+              </View>
+              <View style={styles.healthScoreRow}>
+                <View style={styles.healthScoreLeft}>
+                  <Text style={styles.statValue}>
+                    {debtHealth ? `${debtHealth.healthScore}%` : "—"}
+                  </Text>
+                  <Text style={styles.statSubtext}>
+                    {debtHealth
+                      ? debtHealth.healthScore >= 80
+                        ? "Excellent"
+                        : debtHealth.healthScore >= 60
+                        ? "Good standing"
+                        : "Need attention"
+                      : "Add your debts to see score"}
+                  </Text>
+                </View>
+                <Image
+                  source={
+                    debtHealth
+                      ? debtHealth.healthScore >= 0 && debtHealth.healthScore <= 20
+                        ? require("../../assets/images/home-happy.png")
+                        : debtHealth.healthScore >= 21 && debtHealth.healthScore <= 40
+                        ? require("../../assets/images/home-sad.png")
+                        : debtHealth.healthScore >= 41 && debtHealth.healthScore <= 60
+                        ? require("../../assets/images/home-attention.png")
+                        : debtHealth.healthScore >= 61 && debtHealth.healthScore <= 80
+                        ? require("../../assets/images/home-noeye.png")
+                        : require("../../assets/images/home-angry.png")
+                      : require("../../assets/images/home-happy.png")
+                  }
+                  style={styles.healthScoreImage}
+                  resizeMode="contain"
+                />
+              </View>
+              
             </TouchableOpacity>
 
           {/* Month Budget Progress */}
@@ -1227,8 +1250,10 @@ const debtHealth = useMemo(() => {
             activeOpacity={0.8}
             onPress={() => router.push("/screen/BudgetAllocation")}
           >
-            <Ionicons name="flag" size={24} color="#000" style={styles.statIcon} />
-            <Text style={styles.statLabel2}>Budget Progress</Text>
+            <View style={styles.budgetProgressHeader}>
+              <Ionicons name="flag" size={24} color="#000" />
+              <Text style={styles.statLabel2}>Budget Progress</Text>
+            </View>
 
             {budgetTotal > 0 ? (
               <>
@@ -1258,7 +1283,7 @@ const debtHealth = useMemo(() => {
                 </View>
                 <Text style={styles.progressHint}>
                   {budgetUsedPct >= 100
-                    ? "🚨 You’ve exceeded the monthly budget"
+                    ? "🚨 Budget exceeded"
                     : budgetUsedPct >= 80
                     ? "⚠️ Caution — 80%+ used"
                     : "✅ Keep going!"}
@@ -1428,127 +1453,132 @@ const styles = StyleSheet.create({
   statsContainer: { paddingHorizontal: 20, marginTop: 25, flexDirection: "row", gap: 12 },
   statCard: { flex: 1, borderRadius: 15, padding: 15 },
   healthCard: { backgroundColor: "#115D59", borderRadius: 15, padding: 15, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 6 },
+  healthScoreHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  healthScoreRow: { flexDirection: "row", alignItems: "center", marginTop: -16 },
+  healthScoreLeft: { flex: 0 },
+  healthScoreImage: { width: 80, height: 100, marginLeft: -16, marginTop: 5 },
+  budgetProgressHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 0 },
   goalCard: { backgroundColor: "#B3DCD6", borderRadius: 15, padding: 15, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 6 },
   statIcon: { opacity: 0.9, marginBottom: 8 },
-  statLabel: { color: "#fff", fontSize: 12, opacity: 0.9 },
-  statValue: { color: "#fff", fontSize: 28, fontWeight: "700", marginTop: 4 },
-  statSubtext: { color: "#fff", fontSize: 11, opacity: 0.8, marginTop: 4 },
-  statLabel2: { color: "#000", fontSize: 12, opacity: 0.9 },
+  statLabel: { color: "#fff", fontSize: 13, opacity: 0.9 },
+  statValue: { color: "#fff", fontSize: 35, fontWeight: "700", marginTop: 4 },
+  statSubtext: { color: "#fff", fontSize: 11, opacity: 0.8, marginTop: 4, width: 90 },
+  statLabel2: { color: "#000", fontSize: 13, opacity: 0.9 },
   statValue2: { color: "#000", fontSize: 28, fontWeight: "700", marginTop: 4 },
   statSubtext2: { color: "#000", fontSize: 11, opacity: 0.8, marginTop: 4 },
-insightBox: {
-  borderRadius: 12,
-  padding: 12,
-  marginBottom: 8,
-  borderWidth: 1,
-},
-insightGood: {
-  backgroundColor: "#D1FAE5",
-  borderColor: "#A7F3D0",
-},
-insightWarning: {
-  backgroundColor: "#FEF3C7",
-  borderColor: "#FDE68A",
-},
-insightText: {
-  color: "#1E3932",
-  fontSize: 13,
-  lineHeight: 18,
-},
-insightHeader: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  marginBottom: 6,
-},
-insightIcon: {
-  fontSize: 20,
-},
-criticalBadge: {
-  backgroundColor: "#DC2626",
-  paddingHorizontal: 8,
-  paddingVertical: 2,
-  borderRadius: 4,
-},
-criticalBadgeText: {
-  color: "#fff",
-  fontSize: 10,
-  fontWeight: "700",
-},
-warningBadge: {
-  backgroundColor: "#D97706",
-  paddingHorizontal: 8,
-  paddingVertical: 2,
-  borderRadius: 4,
-},
-warningBadgeText: {
-  color: "#fff",
-  fontSize: 10,
-  fontWeight: "700",
-},
-loadingText: {
-  fontSize: 11,
-  color: "#6b7280",
-  marginLeft: 8,
-  fontStyle: "italic",
-},
-analysisSummary: {
-  marginTop: 12,
-  padding: 12,
-  backgroundColor: "rgba(255, 255, 255, 0.1)",
-  borderRadius: 10,
-  width: "100%",
-},
-summaryRow: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginVertical: 4,
-},
-summaryLabel: {
-  color: "#C9EAD6",
-  fontSize: 12,
-  fontWeight: "500",
-},
-summaryValue: {
-  color: "#fff",
-  fontSize: 14,
-  fontWeight: "700",
-},
-emptyBreakdown: {
-  padding: 32,
-  alignItems: "center",
-  justifyContent: "center",
-},
-emptyBreakdownText: {
-  fontSize: 16,
-  fontWeight: "600",
-  color: "#6b7280",
-  marginBottom: 8,
-},
-emptyBreakdownSubtext: {
-  fontSize: 12,
-  color: "#9ca3af",
-  textAlign: "center",
-},
-greeting: {
-  fontSize: 18,
-  color: "#1E3932",
-  fontWeight: "600",
-  flexShrink: 1,
-  marginTop: 15,
-},
-logoutButtonRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#1E3932",
-  paddingHorizontal: 12,
-  paddingVertical: 8,
-  borderRadius: 12,
-  gap: 6,
-  marginTop: 0,
-},
-logoutFab: {
+  insightBox: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+  },
+  insightGood: {
+    backgroundColor: "#D1FAE5",
+    borderColor: "#A7F3D0",
+  },
+  insightWarning: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#FDE68A",
+  },
+  insightText: {
+    color: "#1E3932",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  insightHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  insightIcon: {
+    fontSize: 20,
+  },
+  criticalBadge: {
+    backgroundColor: "#DC2626",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  criticalBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  warningBadge: {
+    backgroundColor: "#D97706",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  warningBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  loadingText: {
+    fontSize: 11,
+    color: "#6b7280",
+    marginLeft: 8,
+    fontStyle: "italic",
+  },
+  analysisSummary: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 10,
+    width: "100%",
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginVertical: 4,
+  },
+  summaryLabel: {
+    color: "#C9EAD6",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  summaryValue: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  emptyBreakdown: {
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyBreakdownText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#6b7280",
+    marginBottom: 8,
+  },
+  emptyBreakdownSubtext: {
+    fontSize: 12,
+    color: "#9ca3af",
+    textAlign: "center",
+  },
+  greeting: {
+    fontSize: 18,
+    color: "#1E3932",
+    fontWeight: "600",
+    flexShrink: 1,
+    marginTop: 15,
+  },
+  logoutButtonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1E3932",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 6,
+    marginTop: 0,
+  },
+  logoutFab: {
     position: "absolute",
     right: 16,
     top: 57, 

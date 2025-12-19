@@ -68,17 +68,40 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
   const [botTyping, setBotTyping] = useState(false);
   const [typingDots, setTypingDots] = useState("");
   const [isVideoReady, setIsVideoReady] = useState(false);
+  const [currentVideo, setCurrentVideo] = useState<"avatar1" | "avatar2">("avatar1");
+  const [avatar2Ready, setAvatar2Ready] = useState(false);
   const recordingRef = useRef<Audio.Recording | null>(null);
   const scrollViewRef = useRef<ScrollView | null>(null);
-  const videoRef = useRef<Video>(null);
+  const video1Ref = useRef<Video>(null);
+  const video2Ref = useRef<Video>(null);
 
   // Initialize video status and handle playback
   useEffect(() => {
     return () => {
       // Cleanup on unmount
-      videoRef.current?.unloadAsync();
+      const video1 = video1Ref.current;
+      const video2 = video2Ref.current;
+      if (video1) {
+        video1.unloadAsync().catch(() => {});
+      }
+      if (video2) {
+        video2.unloadAsync().catch(() => {});
+      }
     };
   }, []);
+
+  // Handle seamless transition from avatar1 to avatar2
+  useEffect(() => {
+    if (currentVideo === "avatar2" && avatar2Ready && video2Ref.current) {
+      // When switching to avatar2, ensure it's set to loop and play
+      video2Ref.current.setIsLoopingAsync(true).catch(() => {});
+      video2Ref.current.playAsync().catch((err) => {
+        console.error("Error playing avatar2:", err);
+      });
+      // Pause avatar1
+      video1Ref.current?.pauseAsync().catch(() => {});
+    }
+  }, [currentVideo, avatar2Ready]);
 
   // Fetch username from Firestore and send greeting
   useEffect(() => {
@@ -387,36 +410,65 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
 
   return (
     <View style={styles.container}>
-      {/* 🔹 Fixed background video - starts loading immediately on mount */}
+      {/* 🔹 Avatar1 Video - plays first */}
       <Video
-        ref={videoRef}
-        source={require("@/assets/images/angry.mp4")}
-        style={styles.background}
-        shouldPlay
-        isLooping
+        ref={video1Ref}
+        source={require("@/assets/images/avatar1.mp4")}
+        style={[
+          styles.background,
+          { opacity: currentVideo === "avatar1" ? 1 : 0 }
+        ]}
+        shouldPlay={currentVideo === "avatar1"}
+        isLooping={false}
         isMuted={false}
         resizeMode={ResizeMode.COVER}
-        onLoadStart={() => {
-          console.log("Video loading started");
-        }}
         onLoad={() => {
-          console.log("Video loaded and ready");
+          console.log("Avatar1 loaded and ready");
           setIsVideoReady(true);
-          // Ensure video starts playing
-          videoRef.current?.setIsLoopingAsync(true).catch(() => {});
-          videoRef.current?.playAsync().catch((err) => {
-            console.error("Error playing video:", err);
-          });
+          if (currentVideo === "avatar1") {
+            video1Ref.current?.playAsync().catch((err) => {
+              console.error("Error playing avatar1:", err);
+            });
+          }
         }}
         onPlaybackStatusUpdate={(status) => {
-          // Handle looping - replay when video finishes
-          if (status.isLoaded && status.didJustFinish) {
-            videoRef.current?.replayAsync().catch(() => {});
+          // When avatar1 finishes, seamlessly switch to avatar2
+          if (status.isLoaded && status.didJustFinish && currentVideo === "avatar1") {
+            console.log("Avatar1 finished, switching to avatar2");
+            setCurrentVideo("avatar2");
           }
         }}
         onError={(error) => {
-          console.error("Video loading error:", error);
+          console.error("Avatar1 loading error:", error);
           setIsVideoReady(true);
+        }}
+      />
+      
+      {/* 🔹 Avatar2 Video - preloaded and ready, loops continuously */}
+      <Video
+        ref={video2Ref}
+        source={require("@/assets/images/avatar2.mp4")}
+        style={[
+          styles.background,
+          { opacity: currentVideo === "avatar2" ? 1 : 0 }
+        ]}
+        shouldPlay={currentVideo === "avatar2"}
+        isLooping={true}
+        isMuted={false}
+        resizeMode={ResizeMode.COVER}
+        onLoad={() => {
+          console.log("Avatar2 loaded and ready");
+          setAvatar2Ready(true);
+          // Preload but don't play until avatar1 finishes
+          if (currentVideo === "avatar2") {
+            video2Ref.current?.setIsLoopingAsync(true).catch(() => {});
+            video2Ref.current?.playAsync().catch((err) => {
+              console.error("Error playing avatar2:", err);
+            });
+          }
+        }}
+        onError={(error) => {
+          console.error("Avatar2 loading error:", error);
         }}
       />
       <View style={styles.overlay} />

@@ -13,6 +13,7 @@ import {
   Modal,
   TextInput,
   Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
@@ -141,33 +142,44 @@ function useEditModal() {
 
   const ModalUI = (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={close}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{title}</Text>
-            <TouchableOpacity onPress={close} hitSlop={8}>
-              <Ionicons name="close-circle" size={24} color="#6B7280" />
-            </TouchableOpacity>
-          </View>
-          <TextInput
-            value={value}
-            onChangeText={setValue}
-            placeholder={initial || "Enter value"}
-            placeholderTextColor="#9CA3AF"
-            style={styles.modalInput}
-            autoFocus
-          />
-          <TouchableOpacity
-            style={styles.modalSaveBtn}
-            onPress={() => {
-              onSave?.(value.trim());
-              close();
-            }}
-          >
-            <Text style={styles.modalSaveBtnText}>Save Changes</Text>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.modalBackdrop}
+      >
+        <TouchableOpacity 
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={close}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{title}</Text>
+                <TouchableOpacity onPress={close} hitSlop={8}>
+                  <Ionicons name="close-circle" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                value={value}
+                onChangeText={setValue}
+                placeholder={initial || "Enter value"}
+                placeholderTextColor="#9CA3AF"
+                style={styles.modalInput}
+                autoFocus
+              />
+              <TouchableOpacity
+                style={styles.modalSaveBtn}
+                onPress={() => {
+                  onSave?.(value.trim());
+                  close();
+                }}
+              >
+                <Text style={styles.modalSaveBtnText}>Save Changes</Text>
+              </TouchableOpacity>
+            </View>
           </TouchableOpacity>
-        </View>
-      </View>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 
@@ -1003,9 +1015,8 @@ export default function ProfileScreen() {
               </View>
               
               <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>{profile?.username || "Your Name"}</Text>
-                <View style={styles.emailRow}>
-                  <Text style={styles.profileEmail}>{profile?.user_email || "you@example.com"}</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.profileName}>{profile?.username || "Your Name"}</Text>
                   <View style={[
                     styles.verifiedTextBadge,
                     profile?.emailVerified ? styles.verifiedBadgeActive : styles.verifiedBadgeInactive
@@ -1022,6 +1033,9 @@ export default function ProfileScreen() {
                       {profile?.emailVerified ? "Verified" : "Not Verified"}
                     </Text>
                   </View>
+                </View>
+                <View style={styles.emailRow}>
+                  <Text style={styles.profileEmail}>{profile?.user_email || "you@example.com"}</Text>
                 </View>
                 
                 <View style={styles.badgesRow}>
@@ -1059,7 +1073,7 @@ export default function ProfileScreen() {
           <View style={styles.primaryStatsGrid}>
             <View style={styles.primaryStatCard}>
               <View style={styles.statIconBox}>
-                <Ionicons name="trending-up" size={24} color="#1E3932" />
+                <Ionicons name="trending-up" size={20} color="#1E3932" />
               </View>
               <Text style={styles.statLabel}>This Month</Text>
               <Text style={styles.statValue}>{formatCurrency(stats.monthSpend, currency)}</Text>
@@ -1070,7 +1084,7 @@ export default function ProfileScreen() {
 
             <View style={styles.primaryStatCard}>
               <View style={[styles.statIconBox, { backgroundColor: "#FEF3C7" }]}>
-                <Ionicons name="calendar-outline" size={24} color="#D97706" />
+                <Ionicons name="calendar-outline" size={20} color="#D97706" />
               </View>
               <Text style={styles.statLabel}>This Week</Text>
               <Text style={styles.statValue}>{formatCurrency(stats.weekSpend, currency)}</Text>
@@ -1082,7 +1096,7 @@ export default function ProfileScreen() {
           <View style={styles.secondaryStatsRow}>
             <View style={styles.secondaryStatCard}>
               <View style={[styles.statIconBox, { backgroundColor: "#EDE9FE" }]}>
-                <Ionicons name="receipt" size={24} color="#8B5CF6" />
+                <Ionicons name="receipt" size={20} color="#8B5CF6" />
               </View>
               <Text style={styles.statLabel}>Last Transaction</Text>
               <Text style={styles.statValue}>
@@ -1092,7 +1106,7 @@ export default function ProfileScreen() {
 
             <View style={styles.secondaryStatCard}>
               <View style={[styles.statIconBox, { backgroundColor: "#D1FAE5" }]}>
-                <Ionicons name="bar-chart" size={24} color="#059669" />
+                <Ionicons name="bar-chart" size={20} color="#059669" />
               </View>
               <Text style={styles.statLabel}>Top Category</Text>
               <Text style={styles.statValue}>{stats.topCategory}</Text>
@@ -1273,12 +1287,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "800",
     color: "#1E3932",
     letterSpacing: -0.5,
@@ -1311,25 +1325,25 @@ const styles = StyleSheet.create({
 
   // Hero Card
   heroCard: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-    borderRadius: 20,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 18,
     overflow: "hidden",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
       },
       android: {
-        elevation: 6,
+        elevation: 4,
       },
     }),
   },
   heroGradient: {
     backgroundColor: "#1E3932",
-    padding: 20,
+    padding: 16,
   },
   avatarSection: {
     flexDirection: "row",
@@ -1340,9 +1354,9 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: "#C9EAD6",
     borderWidth: 3,
     borderColor: "rgba(255, 255, 255, 0.3)",
@@ -1361,18 +1375,22 @@ const styles = StyleSheet.create({
   profileInfo: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+    flexWrap: "wrap",
+  },
   profileName: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "800",
     color: "#FFFFFF",
-    marginBottom: 4,
   },
   emailRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
     marginBottom: 10,
-    flexWrap: "wrap",
   },
   profileEmail: {
     fontSize: 13,
@@ -1444,84 +1462,88 @@ const styles = StyleSheet.create({
 
   // Stats Section
   statsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
     color: "#1E3932",
-    marginBottom: 12,
+    marginBottom: 10,
     letterSpacing: -0.3,
   },
   primaryStatsGrid: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
+    gap: 10,
+    marginBottom: 10,
   },
   primaryStatCard: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 3,
+        elevation: 2,
       },
     }),
   },
   statIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     backgroundColor: "#D1FAE5",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#6B7280",
     fontWeight: "600",
-    marginBottom: 6,
+    marginBottom: 4,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "900",
     color: "#1E3932",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   statSubtext: {
-    fontSize: 12,
+    fontSize: 11,
     color: "#9CA3AF",
     fontWeight: "500",
   },
   secondaryStatsRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
   secondaryStatCard: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 3,
+        elevation: 2,
       },
     }),
   },
@@ -1556,19 +1578,21 @@ const styles = StyleSheet.create({
 
   // Settings Section
   settingsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
+    paddingHorizontal: 16,
+    marginBottom: 16,
   },
   settingsCard: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
       },
       android: {
         elevation: 2,
@@ -1579,7 +1603,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 16,
+    padding: 14,
   },
   settingLeft: {
     flexDirection: "row",
@@ -1588,9 +1612,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settingIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -1611,7 +1635,7 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: "#F3F4F6",
-    marginLeft: 68,
+    marginLeft: 62,
   },
 
   // Actions
@@ -1657,7 +1681,7 @@ const styles = StyleSheet.create({
 
   // Logout
   logoutSection: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   logoutBtn: {
     flexDirection: "row",
@@ -1665,8 +1689,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 10,
     backgroundColor: "#FEF2F2",
-    paddingVertical: 16,
-    borderRadius: 14,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#FEE2E2",
   },
