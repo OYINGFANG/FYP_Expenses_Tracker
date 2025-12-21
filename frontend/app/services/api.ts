@@ -12,8 +12,8 @@
 // export const CHAT_SERVER_URL = "http://172.20.10.9:3000";   // your current Node/Express for /chat
 // export const API_SERVER_URL  = "http://172.20.10.9:8080";   // your Spring Boot for /api/expenses
 
-export const CHAT_SERVER_URL = "http://192.168.0.96:3000"; 
-export const API_SERVER_URL  = "http://192.168.0.96:8080";
+export const CHAT_SERVER_URL = "http://192.168.0.97:3000"; 
+export const API_SERVER_URL  = "http://192.168.0.97:8080";
 
 
 // Android emulator? use http://10.0.2.2:<port>
@@ -21,16 +21,80 @@ export const API_SERVER_URL  = "http://192.168.0.96:8080";
 // Real device? use your PC’s LAN IP like above, or an HTTPS ngrok URL
 
 async function http<T>(base: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${base}${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-    ...init,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`${res.status} ${res.statusText} ${text}`);
+  const startTime = Date.now();
+  const fullUrl = `${base}${path}`;
+  const method = init?.method || "GET";
+  
+  console.log(`🌐 [API] Starting ${method} request to: ${fullUrl}`);
+  if (init?.body) {
+    try {
+      const bodyPreview = JSON.parse(init.body as string);
+      console.log(`📤 [API] Request body:`, {
+        ...bodyPreview,
+        message: bodyPreview.message ? `${bodyPreview.message.substring(0, 50)}...` : undefined,
+      });
+    } catch (e) {
+      console.log(`📤 [API] Request body:`, init.body);
+    }
   }
-  // some endpoints (DELETE) may return no body
-  try { return (await res.json()) as T; } catch { return undefined as T; }
+  
+  // Add timeout to all requests
+  const controller = new AbortController();
+  // Increased timeout to 25 seconds to handle large datasets (snapshot building may take up to 5s, OpenAI API ~5-15s)
+  const timeoutId = setTimeout(() => {
+    const elapsed = Date.now() - startTime;
+    console.warn(`⏱️ [API] Request timeout after ${elapsed}ms: ${fullUrl}`);
+    controller.abort();
+  }, 25000); // 25 second timeout
+  
+  try {
+    console.log(`⏳ [API] Fetching: ${fullUrl}`);
+    const res = await fetch(fullUrl, {
+      headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+      ...init,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ [API] Response received in ${elapsed}ms: ${res.status} ${res.statusText}`);
+    
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`❌ [API] Error response (${res.status}):`, text.substring(0, 200));
+      throw new Error(`${res.status} ${res.statusText} ${text}`);
+    }
+    
+    // some endpoints (DELETE) may return no body
+    try {
+      const data = await res.json() as T;
+      console.log(`✅ [API] Response parsed successfully (total time: ${Date.now() - startTime}ms)`);
+      return data;
+    } catch (parseError) {
+      console.log(`ℹ️ [API] No JSON body in response (total time: ${Date.now() - startTime}ms)`);
+      return undefined as T;
+    }
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    const elapsed = Date.now() - startTime;
+    console.error(`❌ [API] Request failed after ${elapsed}ms:`, {
+      url: fullUrl,
+      method,
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: error.stack?.substring(0, 300),
+    });
+    
+    if (error.name === 'AbortError') {
+      console.error(`⏱️ [API] Request aborted (timeout after ${elapsed}ms)`);
+      throw new Error("Request timed out. Please check your connection and try again.");
+    }
+    if (error.message?.includes("Network request failed") || error.message?.includes("Failed to fetch")) {
+      console.error(`🌐 [API] Network error - cannot connect to server`);
+      throw new Error("Cannot connect to server. Please check:\n1. Backend server is running\n2. Your network connection\n3. Server IP address is correct");
+    }
+    throw error;
+  }
 }
 
 /** ---------- Chat API Types ---------- */
@@ -64,20 +128,51 @@ export async function sendMessageToServer(
   userId?: string,
   action?: "confirm_pending_transaction" | "cancel_pending_transaction"
 ): Promise<ChatResponse> {
+  console.log(`💬 [Chat] sendMessageToServer called:`, {
+    hasMessage: !!message,
+    messageLength: message?.length || 0,
+    messagePreview: message ? message.substring(0, 50) : undefined,
+    hasUserId: !!userId,
+    userId: userId ? userId.substring(0, 20) + "..." : undefined,
+    hasAction: !!action,
+    action,
+  });
+  
   const body: { message?: string; userId?: string; action?: string } = {};
   
   if (action) {
     body.action = action;
     if (userId) body.userId = userId;
+    console.log(`🔘 [Chat] Sending action: ${action}`);
   } else {
     body.message = message;
     if (userId) body.userId = userId;
+    console.log(`💬 [Chat] Sending message: "${message.substring(0, 100)}${message.length > 100 ? '...' : ''}"`);
   }
   
-  return http<ChatResponse>(CHAT_SERVER_URL, "/chat", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  try {
+    const response = await http<ChatResponse>(CHAT_SERVER_URL, "/chat", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    
+    console.log(`✅ [Chat] Response received:`, {
+      type: response.type,
+      hasMessage: !!response.message,
+      messageLength: response.message?.length || 0,
+      messagePreview: response.message ? response.message.substring(0, 100) : undefined,
+      hasTransaction: response.type === "pending_transaction_confirmation",
+    });
+    
+    return response;
+  } catch (error: any) {
+    console.error(`❌ [Chat] Error in sendMessageToServer:`, {
+      errorName: error.name,
+      errorMessage: error.message,
+      errorStack: error.stack?.substring(0, 500),
+    });
+    throw error;
+  }
 }
 
 /** ---------- SPRING: expense API ---------- */

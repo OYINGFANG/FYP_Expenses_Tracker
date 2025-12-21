@@ -614,6 +614,14 @@ const debtHealth = useMemo(() => {
   
   // Run AI-powered behavior analysis when data changes (debounced)
   const runBehaviorAnalysis = async () => {
+    // Calculate month expenses outside try-catch so it's available in error handler
+    const monthKey = getCurrentMonthKey();
+    const { startISO, endISO } = getMonthDateRange(monthKey);
+    const monthExpenses = expenseRecords.filter(
+      (r) => r.dateISO && r.dateISO >= startISO && r.dateISO < endISO
+    );
+    const currentMonthTotal = monthExpenses.reduce((sum: number, r: ExpenseRecord) => sum + (Number(r.amount) || 0), 0);
+    
     try {
       setIsLoadingAnalysis(true);
       const userId = await AsyncStorage.getItem("userId");
@@ -622,14 +630,7 @@ const debtHealth = useMemo(() => {
         return;
       }
 
-      // Get current month key
-      const monthKey = getCurrentMonthKey();
-      const { startISO, endISO } = getMonthDateRange(monthKey);
-
-      // Filter expenses and income for current month
-      const monthExpenses = expenseRecords.filter(
-        (r) => r.dateISO && r.dateISO >= startISO && r.dateISO < endISO
-      );
+      // Filter income for current month
       const monthIncomes = incomeRecords.filter(
         (r) => r.dateISO && r.dateISO >= startISO && r.dateISO < endISO
       );
@@ -689,21 +690,54 @@ const debtHealth = useMemo(() => {
       // Use total balance as savings (or could fetch from savings collection)
       const savingsAmount = total > 0 ? total : 0;
 
-      // Call AI behavior analysis endpoint
-      const response = await fetch(`${CHAT_SERVER_URL}/ai/behavior-analysis`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          expenses: expensesData,
-          incomes: incomesData,
-          debts: debtsData,
-          budget: budgetData,
-          savings: savingsAmount,
-          currentMonthKey: monthKey,
-        }),
-      });
+      // Call AI behavior analysis endpoint with timeout
+      // Backend will return basic insights if AI times out
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 18000); // 18 second timeout
+      
+      // Limit data sent to AI to prevent timeout with large datasets
+      // Only send recent records (last 3 months worth) and limit count
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      const threeMonthsAgoISO = threeMonthsAgo.toISOString();
+      
+      const limitedExpenses = expensesData
+        .filter(e => e.dateISO >= threeMonthsAgoISO)
+        .slice(0, 30); // Reduced to 30 expenses to speed up AI processing
+      const limitedIncomes = incomesData
+        .filter(i => i.dateISO >= threeMonthsAgoISO)
+        .slice(0, 10); // Reduced to 10 incomes
+      
+      console.log(`📊 Sending ${limitedExpenses.length} expenses and ${limitedIncomes.length} incomes to AI (filtered from ${expensesData.length} total)`);
+      
+      let response: Response;
+      try {
+        response = await fetch(`${CHAT_SERVER_URL}/ai/behavior-analysis`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            expenses: limitedExpenses,
+            incomes: limitedIncomes,
+            debts: debtsData,
+            budget: budgetData,
+            savings: savingsAmount,
+            currentMonthKey: monthKey,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError' || fetchError.message?.includes('timeout')) {
+          throw new Error("Request timed out. The AI analysis is taking too long. This may happen with large datasets.");
+        }
+        if (fetchError.message?.includes('Network request')) {
+          throw new Error("Network error. Please check your connection.");
+        }
+        throw fetchError;
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -753,23 +787,76 @@ const debtHealth = useMemo(() => {
 
       setIsLoadingAnalysis(false);
     } catch (e: any) {
-      console.error("AI Behavior analysis error:", e);
       setIsLoadingAnalysis(false);
-      // Set a fallback message with default trendMoM to prevent layout shifts
-      setBehaviourReport({
-        insights: [
-          {
-            message: "Unable to analyze behavior at this time. Please try again later.",
-            severity: "info",
-            icon: "ℹ️",
+      
+      // For timeout errors, handle silently - this is expected with large datasets
+      if (e?.message?.includes("timeout") || e?.message?.includes("timed out")) {
+        // Timeout is expected with large datasets - handle silently
+        console.log("ℹ️ AI analysis skipped due to timeout (normal with large datasets)");
+        // Keep existing insights or calculate basic totals without AI
+        if (!behaviourReport || !behaviourReport.insights || behaviourReport.insights.length === 0) {
+          // Set basic report without AI insights
+          setBehaviourReport({
+            insights: [], // Empty - no error message shown
+            summary: {},
+            totals: {
+              monthTotal: currentMonthTotal,
+              trendMoM: undefined,
+            },
+          });
+        } else {
+          // Keep existing insights, just update totals if needed
+          const prevTotal = behaviourReport?.totals?.monthTotal || 0;
+          if (Math.abs(prevTotal - currentMonthTotal) > 0.01) {
+            setBehaviourReport(prev => {
+              if (!prev) {
+                return {
+                  insights: [],
+                  summary: {},
+                  totals: {
+                    monthTotal: currentMonthTotal,
+                    trendMoM: undefined,
+                  },
+                };
+              }
+              return {
+                insights: prev.insights || [],
+                summary: prev.summary || {},
+                totals: {
+                  monthTotal: currentMonthTotal,
+                  trendMoM: prev.totals?.trendMoM,
+                },
+              };
+            });
+          }
+        }
+        return; // Exit early - don't show error
+      }
+      
+      // For other errors, log but don't show alarming messages
+      console.warn("AI Behavior analysis error (non-timeout):", e?.message || "Unknown error");
+      
+      // Only show error message for non-timeout errors and only if no existing insights
+      if (!behaviourReport || !behaviourReport.insights || behaviourReport.insights.length === 0) {
+        const errorMessage = e?.message?.includes("Network request") 
+          ? "Network connection issue. AI insights will be available when connection improves."
+          : "AI insights are temporarily unavailable. Your data is safe and the app is working normally.";
+        
+        setBehaviourReport({
+          insights: [
+            {
+              message: errorMessage,
+              severity: "info",
+              icon: "ℹ️",
+            },
+          ],
+          summary: {},
+          totals: {
+            monthTotal: currentMonthTotal,
+            trendMoM: undefined,
           },
-        ],
-        summary: {},
-        totals: {
-          monthTotal: 0,
-          trendMoM: 0, // Default value to prevent layout shifts
-        },
-      });
+        });
+      }
     }
   };
 
@@ -781,11 +868,16 @@ const debtHealth = useMemo(() => {
     }
 
     // Run analysis when expenses, income, debts, or budget changes
-    // But wait 1.5 seconds after the last change to batch updates
+    // But wait 3 seconds after the last change to batch updates
+    // Always try to run - backend will handle large datasets with fallback
     if (expenseRecords.length > 0 || incomeRecords.length > 0 || debts.length > 0) {
       analysisTimeoutRef.current = setTimeout(() => {
-      runBehaviorAnalysis();
-      }, 1500); // Wait 1.5 seconds after last change
+        // Run in background, don't block UI
+        runBehaviorAnalysis().catch((err) => {
+          // Error already handled in runBehaviorAnalysis - silently fail
+          // Don't log as it's expected with large datasets
+        });
+      }, 3000); // Increased debounce time to 3 seconds
     }
 
     // Cleanup timeout on unmount or dependency change

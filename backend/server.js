@@ -661,7 +661,8 @@ Provide comprehensive analysis with:
 
 Focus on what matters most for financial health.`;
 
-    const response = await openai.chat.completions.create({
+    // Add timeout to OpenAI API call (15 seconds max)
+    const openaiPromise = openai.chat.completions.create({
       model: "gpt-4o-mini",
       response_format: { type: "json_object" },
       messages: [
@@ -671,6 +672,14 @@ Focus on what matters most for financial health.`;
       temperature: 0.7,
       max_tokens: 2000,
     });
+
+    // Create timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("OpenAI API timeout")), 15000);
+    });
+
+    // Race between OpenAI and timeout
+    const response = await Promise.race([openaiPromise, timeoutPromise]);
 
     const content = response.choices[0]?.message?.content;
     if (!content) {
@@ -716,7 +725,111 @@ Focus on what matters most for financial health.`;
       },
     });
   } catch (err) {
-    console.error("AI Behavior Analysis error:", err);
+    console.error("AI Behavior Analysis error:", err.message || err);
+    
+    // If timeout or OpenAI error, return basic insights instead of failing
+    if (err.message?.includes("timeout") || err.message?.includes("OpenAI")) {
+      console.log("⚠️ AI analysis timed out, returning basic insights");
+      
+      // Calculate basic metrics
+      const totalExpenses = (req.body.expenses || []).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      const totalIncome = (req.body.incomes || []).reduce((sum, i) => sum + (Number(i.amount) || 0), 0);
+      const budgetTotal = req.body.budget?.totalBudget || 0;
+      const budgetSpent = req.body.budget?.totalSpent || 0;
+      const budgetRemaining = req.body.budget?.remaining || 0;
+      const budgetUsedPct = budgetTotal > 0 ? (budgetSpent / budgetTotal) * 100 : 0;
+      const netCashflow = totalIncome - totalExpenses;
+      const savingsRate = totalIncome > 0 ? (netCashflow / totalIncome) * 100 : 0;
+      
+      // Generate basic insights without AI
+      const basicInsights = [];
+      
+      if (budgetTotal > 0) {
+        if (budgetUsedPct > 100) {
+          basicInsights.push({
+            message: `⚠️ You've exceeded your budget by RM ${Math.abs(budgetRemaining).toFixed(2)}. Consider reviewing your spending.`,
+            severity: "critical",
+            icon: "🚨",
+            type: "budget",
+            actionable: true,
+          });
+        } else if (budgetUsedPct > 80) {
+          basicInsights.push({
+            message: `You've used ${budgetUsedPct.toFixed(1)}% of your budget. RM ${budgetRemaining.toFixed(2)} remaining this month.`,
+            severity: "warning",
+            icon: "⚠️",
+            type: "budget",
+            actionable: true,
+          });
+        } else if (budgetRemaining > 50) {
+          basicInsights.push({
+            message: `Great! You're on track with RM ${budgetRemaining.toFixed(2)} remaining in your budget.`,
+            severity: "info",
+            icon: "✅",
+            type: "budget",
+            actionable: false,
+          });
+        }
+      }
+      
+      if (netCashflow < 0) {
+        basicInsights.push({
+          message: `Your expenses exceed income by RM ${Math.abs(netCashflow).toFixed(2)} this month. Consider reducing spending.`,
+          severity: "critical",
+          icon: "🚨",
+          type: "cashflow",
+          actionable: true,
+        });
+      } else if (savingsRate > 20) {
+        basicInsights.push({
+          message: `Excellent savings rate of ${savingsRate.toFixed(1)}%! You saved RM ${netCashflow.toFixed(2)} this month.`,
+          severity: "info",
+          icon: "✅",
+          type: "savings",
+          actionable: false,
+        });
+      }
+      
+      // Category insights
+      const categoryBreakdown = (req.body.expenses || []).reduce((acc, e) => {
+        const cat = e.category || "Others";
+        acc[cat] = (acc[cat] || 0) + (Number(e.amount) || 0);
+        return acc;
+      }, {});
+      
+      const topCategory = Object.entries(categoryBreakdown)
+        .sort(([, a], [, b]) => b - a)[0];
+      
+      if (topCategory && topCategory[1] > totalExpenses * 0.3) {
+        basicInsights.push({
+          message: `${topCategory[0]} is your largest expense category (RM ${topCategory[1].toFixed(2)}). Review if this is necessary.`,
+          severity: "warning",
+          icon: "💡",
+          type: "category",
+          actionable: true,
+        });
+      }
+      
+      return res.json({
+        success: true,
+        monthKey: req.body.currentMonthKey || new Date().toISOString().slice(0, 7),
+        insights: basicInsights,
+        summary: {
+          overallHealth: netCashflow >= 0 && budgetUsedPct < 100 ? "good" : "fair",
+          keyConcerns: netCashflow < 0 ? ["Negative cashflow"] : [],
+          positiveHighlights: savingsRate > 20 ? ["Good savings rate"] : [],
+        },
+        metrics: {
+          totalExpenses,
+          totalIncome,
+          netCashflow,
+          savingsRate,
+          dti: 0,
+          budgetUsedPct,
+        },
+      });
+    }
+    
     res.status(500).json({
       error: "Failed to analyze behavior",
       message: err.message,
@@ -812,6 +925,244 @@ const toNumberRecord = (record = {}) => {
   return output;
 };
 
+// Fast minimal snapshot for chat - only fetches essential data (expenses + incomes + basic totals)
+// This is much faster than the full snapshot and sufficient for chat analysis
+// Optimized for speed with large datasets by:
+// 1. Fetching expenses and incomes in parallel
+// 2. Using date range queries when possible
+// 3. Limiting fallback queries to 200 records
+// 4. Skipping expensive operations (debts, savings goals, budget calculations)
+async function buildFastMinimalSnapshot(userId, monthKey = getCurrentMonthKey()) {
+  if (!db) {
+    console.warn("⚠️ buildFastMinimalSnapshot called without Firestore. Returning null.");
+    return null;
+  }
+
+  console.log(`⚡ Building FAST minimal snapshot for userId: ${userId}, monthKey: ${monthKey}`);
+  const startTime = Date.now();
+
+  const userPath = normalizeUserPath(userId);
+  const { startISO, endISO } = getMonthDateRange(monthKey);
+  const startDateObj = new Date(startISO);
+  const endDateObj = new Date(endISO);
+  const startTimestamp = admin.firestore.Timestamp.fromDate(startDateObj);
+  const endTimestamp = admin.firestore.Timestamp.fromDate(endDateObj);
+
+  // Fetch expenses and incomes in parallel for speed
+  let monthExpenses = [];
+  let monthIncomes = [];
+  
+  try {
+    const [expensesSnap, incomesSnap] = await Promise.all([
+      // Try date range query first
+      db.collection("EXPENSES")
+        .where("user_id", "==", userPath)
+        .where("exp_date", ">=", startTimestamp)
+        .where("exp_date", "<", endTimestamp)
+        .get()
+        .catch(() => null),
+      db.collection("INCOME")
+        .where("user_id", "==", userPath)
+        .where("inc_date", ">=", startTimestamp)
+        .where("inc_date", "<", endTimestamp)
+        .get()
+        .catch(() => null)
+    ]);
+
+    // Process expenses
+    if (expensesSnap && !expensesSnap.empty) {
+      monthExpenses = expensesSnap.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          amount: Number(d.exp_total) || 0,
+          category: d.exp_category || "Uncategorized",
+        };
+      });
+    } else {
+      // Fallback: fetch all and filter in memory (faster than full snapshot)
+      const allExpensesSnap = await db.collection("EXPENSES")
+        .where("user_id", "==", userPath)
+        .limit(200) // Limit to prevent excessive data
+        .get();
+      monthExpenses = allExpensesSnap.docs
+        .map((doc) => {
+          const d = doc.data();
+          const dateISO = toISO(d.exp_date || d.created_at);
+          return {
+            amount: Number(d.exp_total) || 0,
+            category: d.exp_category || "Uncategorized",
+            dateISO,
+          };
+        })
+        .filter((r) => r.dateISO >= startISO && r.dateISO < endISO);
+    }
+
+    // Process incomes
+    if (incomesSnap && !incomesSnap.empty) {
+      monthIncomes = incomesSnap.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          amount: Number(d.inc_total) || 0,
+          category: d.inc_category || "Uncategorized",
+        };
+      });
+    } else {
+      // Fallback: fetch all and filter in memory
+      const allIncomesSnap = await db.collection("INCOME")
+        .where("user_id", "==", userPath)
+        .limit(200)
+        .get();
+      monthIncomes = allIncomesSnap.docs
+        .map((doc) => {
+          const d = doc.data();
+          const dateISO = toISO(d.inc_date || d.created_at);
+          return {
+            amount: Number(d.inc_total) || 0,
+            category: d.inc_category || "Uncategorized",
+            dateISO,
+          };
+        })
+        .filter((r) => r.dateISO >= startISO && r.dateISO < endISO);
+    }
+
+    // Calculate basic totals (fast)
+    const totalIncome = monthIncomes.reduce((sum, r) => sum + r.amount, 0);
+    const consumptionExpenses = monthExpenses.filter((exp) => {
+      const cat = (exp.category || "").trim();
+      return !SAVINGS_CATEGORY_NAMES.some((name) => name.toLowerCase() === cat.toLowerCase());
+    });
+    const consumptionTotal = consumptionExpenses.reduce((sum, r) => sum + r.amount, 0);
+    
+    // Group expenses by category for basic insights
+    const categoryTotals = {};
+    consumptionExpenses.forEach((exp) => {
+      const cat = exp.category || "Uncategorized";
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + exp.amount;
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`✅ Fast snapshot built in ${elapsed}ms: ${monthExpenses.length} expenses, ${monthIncomes.length} incomes`);
+
+    // Return minimal snapshot structure
+    return {
+      totalIncome: round2(totalIncome),
+      spendingTotals: {
+        income: round2(totalIncome),
+        spending: round2(consumptionTotal),
+        savingsContrib: 0, // Not calculated in fast mode
+        netCashFlow: round2(totalIncome - consumptionTotal),
+      },
+      categoryBreakdown: categoryTotals,
+      expensesCount: monthExpenses.length,
+      incomesCount: monthIncomes.length,
+      // Mark as fast/minimal snapshot
+      _fastSnapshot: true,
+    };
+  } catch (err) {
+    console.error("❌ Error building fast snapshot:", err.message);
+    return null;
+  }
+}
+
+// Build snapshot for last 3 months - aggregates data from current month and 2 previous months
+async function build3MonthSnapshot(userId) {
+  if (!db) {
+    console.warn("⚠️ build3MonthSnapshot called without Firestore. Returning null.");
+    return null;
+  }
+
+  console.log(`📊 Building 3-month snapshot for userId: ${userId}`);
+  const startTime = Date.now();
+
+  const currentMonthKey = getCurrentMonthKey();
+  const monthKeys = [];
+  
+  // Get current month and 2 previous months
+  let date = new Date();
+  for (let i = 0; i < 3; i++) {
+    monthKeys.push(getCurrentMonthKey(date));
+    date.setMonth(date.getMonth() - 1);
+  }
+
+  // Fetch snapshots for all 3 months in parallel with individual timeouts
+  // Use longer timeout since snapshots can take 3-5 seconds with large datasets
+  const snapshotPromises = monthKeys.map(async (monthKey) => {
+    try {
+      const snapshotPromise = buildFastMinimalSnapshot(userId, monthKey);
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`Timeout for ${monthKey}`)), 8000); // 8 second timeout per month (snapshots can take 3-5 seconds)
+      });
+      return await Promise.race([snapshotPromise, timeoutPromise]);
+    } catch (err) {
+      console.warn(`⚠️ Snapshot for ${monthKey} failed or timed out:`, err.message);
+      return null; // Return null if one month fails, continue with others
+    }
+  });
+  
+  const snapshots = await Promise.all(snapshotPromises);
+
+  // Aggregate data across all 3 months
+  const aggregated = {
+    months: [],
+    totals: {
+      totalIncome: 0,
+      totalSpending: 0,
+      totalNetCashFlow: 0,
+      totalExpensesCount: 0,
+      totalIncomesCount: 0,
+    },
+    categoryBreakdown: {},
+    currentMonthKey,
+  };
+
+  snapshots.forEach((snapshot, index) => {
+    if (snapshot) {
+      const monthData = {
+        monthKey: monthKeys[index],
+        totalIncome: snapshot.totalIncome || 0,
+        totalSpending: snapshot.spendingTotals?.spending || 0,
+        netCashFlow: snapshot.spendingTotals?.netCashFlow || 0,
+        expensesCount: snapshot.expensesCount || 0,
+        incomesCount: snapshot.incomesCount || 0,
+        categoryBreakdown: snapshot.categoryBreakdown || {},
+      };
+      
+      aggregated.months.push(monthData);
+      aggregated.totals.totalIncome += monthData.totalIncome;
+      aggregated.totals.totalSpending += monthData.totalSpending;
+      aggregated.totals.totalNetCashFlow += monthData.netCashFlow;
+      aggregated.totals.totalExpensesCount += monthData.expensesCount;
+      aggregated.totals.totalIncomesCount += monthData.incomesCount;
+
+      // Aggregate category breakdown
+      Object.entries(monthData.categoryBreakdown).forEach(([cat, amount]) => {
+        aggregated.categoryBreakdown[cat] = (aggregated.categoryBreakdown[cat] || 0) + amount;
+      });
+    } else {
+      console.warn(`⚠️ Snapshot for ${monthKeys[index]} returned null, skipping`);
+    }
+  });
+  
+  // If no months were successfully loaded, return null
+  if (aggregated.months.length === 0) {
+    console.warn("⚠️ No months successfully loaded in 3-month snapshot, returning null");
+    return null;
+  }
+
+  // Calculate averages
+  const monthCount = aggregated.months.length;
+  aggregated.averages = {
+    monthlyIncome: monthCount > 0 ? round2(aggregated.totals.totalIncome / monthCount) : 0,
+    monthlySpending: monthCount > 0 ? round2(aggregated.totals.totalSpending / monthCount) : 0,
+    monthlyNetCashFlow: monthCount > 0 ? round2(aggregated.totals.totalNetCashFlow / monthCount) : 0,
+  };
+
+  const elapsed = Date.now() - startTime;
+  console.log(`✅ 3-month snapshot built in ${elapsed}ms: ${aggregated.months.length} months of data`);
+
+  return aggregated;
+}
+
 // Savings cash flow source of truth:
 // - We use SAVINGS_GOALS/{goalId}/CONTRIBUTIONS as the ONLY source for savingsContrib.
 // - EXPENSES with category "Savings" are ignored for savings calculations to avoid double counting.
@@ -834,65 +1185,135 @@ async function buildMonthlySnapshotFromFirestore(userId, monthKey = getCurrentMo
   const startTimestamp = admin.firestore.Timestamp.fromDate(startDateObj);
   const endTimestamp = admin.firestore.Timestamp.fromDate(endDateObj);
 
-  // Fetch expenses for this month
-  let allExpenses = [];
+  // Fetch expenses for this month (OPTIMIZED: Use date range query instead of fetching all)
+  let monthExpenses = [];
   try {
-    const expensesSnap = await db
-      .collection("EXPENSES")
-      .where("user_id", "==", userPath)
-      .get();
+    // Try date range query first (same as fast snapshot)
+    let expensesSnap = null;
+    try {
+      expensesSnap = await db
+        .collection("EXPENSES")
+        .where("user_id", "==", userPath)
+        .where("exp_date", ">=", startTimestamp)
+        .where("exp_date", "<", endTimestamp)
+        .get();
+    } catch (queryErr) {
+      console.log(`⚠️ Date range query failed: ${queryErr.message}, using fallback`);
+      expensesSnap = null;
+    }
 
-    allExpenses = expensesSnap.docs.map((doc) => {
-      const d = doc.data();
-      return {
-        id: doc.id,
-        amount: Number(d.exp_total) || 0,
-        category: d.exp_category || "Uncategorized",
-        dateISO: toISO(d.exp_date || d.created_at),
-        description: d.exp_notes || "",
-        paymentMethod: d.exp_payment_method || "",
-      };
-    });
-    console.log(`📊 Found ${allExpenses.length} total expenses`);
+    if (expensesSnap && !expensesSnap.empty && expensesSnap.docs.length > 0) {
+      monthExpenses = expensesSnap.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          amount: Number(d.exp_total) || 0,
+          category: d.exp_category || "Uncategorized",
+          dateISO: toISO(d.exp_date || d.created_at),
+          description: d.exp_notes || "",
+          paymentMethod: d.exp_payment_method || "",
+        };
+      });
+      console.log(`📊 Found ${monthExpenses.length} expenses for ${monthKey} (date range query)`);
+    } else {
+      // Fallback: fetch all and filter in memory (same as fast snapshot)
+      console.log(`⚠️ Date range query returned empty/null (snap=${expensesSnap ? 'exists' : 'null'}, empty=${expensesSnap?.empty}), using fallback method`);
+      const allExpensesSnap = await db
+        .collection("EXPENSES")
+        .where("user_id", "==", userPath)
+        .limit(500) // Increased limit for full snapshot
+        .get();
+      console.log(`📊 Fetched ${allExpensesSnap.docs.length} total expenses from DB for filtering`);
+      const allExpenses = allExpensesSnap.docs.map((doc) => {
+        const d = doc.data();
+        const dateISO = toISO(d.exp_date || d.created_at);
+        return {
+          id: doc.id,
+          amount: Number(d.exp_total) || 0,
+          category: d.exp_category || "Uncategorized",
+          dateISO: dateISO,
+          description: d.exp_notes || "",
+          paymentMethod: d.exp_payment_method || "",
+        };
+      });
+      console.log(`📊 Date range filter: ${startISO} <= dateISO < ${endISO}`);
+      monthExpenses = allExpenses.filter(
+        (r) => r.dateISO >= startISO && r.dateISO < endISO
+      );
+      console.log(`📊 Found ${monthExpenses.length} expenses for ${monthKey} (fallback mode, filtered from ${allExpenses.length} total)`);
+      if (monthExpenses.length === 0 && allExpenses.length > 0) {
+        console.log(`⚠️ No expenses match date range. Sample dates from DB:`, allExpenses.slice(0, 3).map(e => e.dateISO));
+      }
+    }
+    
+    if (monthExpenses.length > 0) {
+      const categoryBreakdown = {};
+      monthExpenses.forEach(exp => {
+        const cat = exp.category || "Uncategorized";
+        categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + exp.amount;
+      });
+      console.log(`📊 Expense categories breakdown (${Object.keys(categoryBreakdown).length} categories):`, categoryBreakdown);
+    } else {
+      console.log(`⚠️ No expenses found for ${monthKey} - category insights will be empty`);
+    }
   } catch (err) {
-    console.error("❌ Error fetching expenses:", err.message);
-    allExpenses = [];
+    console.error("❌ Error fetching expenses:", err.message, err.stack?.substring(0, 200));
+    monthExpenses = [];
   }
 
-  const monthExpenses = allExpenses.filter(
-    (r) => r.dateISO >= startISO && r.dateISO < endISO
-  );
-  console.log(`📊 Found ${monthExpenses.length} expenses for ${monthKey}`);
-
-  // Fetch incomes for this month
-  let allIncomes = [];
+  // Fetch incomes for this month (OPTIMIZED: Use date range query instead of fetching all)
+  let monthIncomes = [];
   try {
+    // Try date range query first (same as fast snapshot)
     const incomesSnap = await db
       .collection("INCOME")
       .where("user_id", "==", userPath)
-      .get();
+      .where("inc_date", ">=", startTimestamp)
+      .where("inc_date", "<", endTimestamp)
+      .get()
+      .catch(() => null);
 
-    allIncomes = incomesSnap.docs.map((doc) => {
-      const d = doc.data();
-      return {
-        id: doc.id,
-        amount: Number(d.inc_total) || 0,
-        category: d.inc_category || "Uncategorized",
-        dateISO: toISO(d.inc_date || d.created_at),
-        description: d.inc_notes || "",
-        paymentMethod: d.inc_payment_method || "",
-      };
-    });
-    console.log(`📊 Found ${allIncomes.length} total incomes`);
+    if (incomesSnap && !incomesSnap.empty) {
+      monthIncomes = incomesSnap.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          amount: Number(d.inc_total) || 0,
+          category: d.inc_category || "Uncategorized",
+          dateISO: toISO(d.inc_date || d.created_at),
+          description: d.inc_notes || "",
+          paymentMethod: d.inc_payment_method || "",
+        };
+      });
+      console.log(`📊 Found ${monthIncomes.length} incomes for ${monthKey} (date range query)`);
+    } else {
+      // Fallback: fetch all and filter in memory (same as fast snapshot)
+      console.log(`⚠️ Date range query returned empty, using fallback method for incomes`);
+      const allIncomesSnap = await db
+        .collection("INCOME")
+        .where("user_id", "==", userPath)
+        .limit(500) // Increased limit for full snapshot
+        .get();
+      const allIncomes = allIncomesSnap.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          amount: Number(d.inc_total) || 0,
+          category: d.inc_category || "Uncategorized",
+          dateISO: toISO(d.inc_date || d.created_at),
+          description: d.inc_notes || "",
+          paymentMethod: d.inc_payment_method || "",
+        };
+      });
+      monthIncomes = allIncomes.filter(
+        (r) => r.dateISO >= startISO && r.dateISO < endISO
+      );
+      console.log(`📊 Found ${monthIncomes.length} incomes for ${monthKey} (fallback mode, filtered from ${allIncomes.length} total)`);
+    }
   } catch (err) {
     console.error("❌ Error fetching incomes:", err.message);
-    allIncomes = [];
+    monthIncomes = [];
   }
-
-  const monthIncomes = allIncomes.filter(
-    (r) => r.dateISO >= startISO && r.dateISO < endISO
-  );
-  console.log(`📊 Found ${monthIncomes.length} incomes for ${monthKey}`);
 
   // Fetch debts
   let debts = [];
@@ -1017,12 +1438,19 @@ async function buildMonthlySnapshotFromFirestore(userId, monthKey = getCurrentMo
   // Calculate totals & savings contributions (CONTRIBUTIONS = source of truth)
   const totalIncome = monthIncomes.reduce((sum, r) => sum + r.amount, 0);
   const monthlySavingsContrib = savingsContributions.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+  console.log(`📊 Financial totals: income=${totalIncome}, savingsContrib=${monthlySavingsContrib}, expensesCount=${monthExpenses.length}`);
+
+  console.log(`📊 Processing ${monthExpenses.length} expenses for budget calculation`);
+  if (monthExpenses.length > 0) {
+    console.log(`📊 Expense categories:`, monthExpenses.map(e => ({ cat: e.category, amount: e.amount })).slice(0, 5));
+  }
 
   const consumptionExpenses = monthExpenses.filter((exp) => {
     const cat = (exp.category || "").trim();
     return !SAVINGS_CATEGORY_NAMES.some((name) => name.toLowerCase() === cat.toLowerCase());
   });
   const ignoredSavingsExpenseCount = monthExpenses.length - consumptionExpenses.length;
+  console.log(`📊 Consumption expenses: ${consumptionExpenses.length}, Savings expenses: ${ignoredSavingsExpenseCount}`);
   if (ignoredSavingsExpenseCount > 0) {
     console.log(`ℹ️ Ignored ${ignoredSavingsExpenseCount} savings expense rows to avoid double counting.`);
   }
@@ -1070,19 +1498,61 @@ async function buildMonthlySnapshotFromFirestore(userId, monthKey = getCurrentMo
       }
     : undefined;
 
-  // Group expenses by category (including savings categories for legacy charts / budgets)
+  // Group expenses by category
+  // IMPORTANT: For budget comparison, we need to include ALL expenses (both consumption and savings)
+  // because the user may have budget allocations for savings categories too
   const categoryTotals = {};
-  monthExpenses.forEach((exp) => {
+  
+  // First, add all consumption expenses
+  consumptionExpenses.forEach((exp) => {
     const cat = exp.category || "Uncategorized";
     categoryTotals[cat] = (categoryTotals[cat] || 0) + exp.amount;
   });
+  console.log(`📊 Category totals after consumption expenses:`, Object.keys(categoryTotals).length, "categories", Object.keys(categoryTotals));
+  
+  // Also include savings expenses - they should count toward budget if user has savings budget
+  const savingsExpenses = monthExpenses.filter((exp) => {
+    const cat = (exp.category || "").trim();
+    return SAVINGS_CATEGORY_NAMES.some((name) => name.toLowerCase() === cat.toLowerCase());
+  });
+  console.log(`📊 Found ${savingsExpenses.length} savings expenses`);
+  
+  savingsExpenses.forEach((exp) => {
+    const cat = exp.category || "Uncategorized";
+    categoryTotals[cat] = (categoryTotals[cat] || 0) + exp.amount;
+  });
+  
+  console.log(`📊 Category totals after adding savings:`, Object.keys(categoryTotals).length, "categories", Object.keys(categoryTotals));
 
-  // Get previous month data for comparison
+  // Get previous month data for comparison (OPTIMIZED: Fetch only previous month)
   const prevMonthKey = getPreviousMonthKey(monthKey);
   const prevRange = getMonthDateRange(prevMonthKey);
-  const prevExpenses = allExpenses.filter(
-    (r) => r.dateISO >= prevRange.startISO && r.dateISO < prevRange.endISO
-  );
+  const prevStartTimestamp = admin.firestore.Timestamp.fromDate(new Date(prevRange.startISO));
+  const prevEndTimestamp = admin.firestore.Timestamp.fromDate(new Date(prevRange.endISO));
+  
+  let prevExpenses = [];
+  try {
+    const prevExpensesSnap = await db
+      .collection("EXPENSES")
+      .where("user_id", "==", userPath)
+      .where("exp_date", ">=", prevStartTimestamp)
+      .where("exp_date", "<", prevEndTimestamp)
+      .get();
+    prevExpenses = prevExpensesSnap.docs.map((doc) => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        amount: Number(d.exp_total) || 0,
+        category: d.exp_category || "Uncategorized",
+        dateISO: toISO(d.exp_date || d.created_at),
+        description: d.exp_notes || "",
+        paymentMethod: d.exp_payment_method || "",
+      };
+    });
+  } catch (err) {
+    console.warn("⚠️ Could not fetch previous month expenses for comparison:", err.message);
+    prevExpenses = [];
+  }
   const prevCategoryTotals = {};
   prevExpenses.forEach((exp) => {
     const cat = exp.category || "Uncategorized";
@@ -1138,6 +1608,8 @@ async function buildMonthlySnapshotFromFirestore(userId, monthKey = getCurrentMo
   let budgetSummary;
   if (budgetDoc) {
     const allocations = toNumberRecord(budgetDoc.allocations || {});
+    console.log(`📊 Budget allocations:`, Object.keys(allocations).length, "categories");
+    console.log(`📊 Category totals:`, Object.keys(categoryTotals).length, "categories", Object.keys(categoryTotals));
     const categoriesSet = new Set([...Object.keys(allocations), ...Object.keys(categoryTotals)]);
     const budgetCategories = [...categoriesSet].map((category) => {
       const budgeted = round2(allocations[category] || 0);
@@ -1154,6 +1626,7 @@ async function buildMonthlySnapshotFromFirestore(userId, monthKey = getCurrentMo
     });
     const totalBudget = round2(budgetCategories.reduce((sum, cat) => sum + cat.budgeted, 0));
     const totalActual = round2(budgetCategories.reduce((sum, cat) => sum + cat.actual, 0));
+    console.log(`📊 Budget summary: totalBudget=${totalBudget}, totalActual=${totalActual}, categories=${budgetCategories.length}`);
     budgetSummary = {
       totalBudget,
       totalActual,
@@ -1575,12 +2048,25 @@ const CREATE_TRANSACTION_TOOL = {
 // 
 // ======================================================
 app.post("/chat", async (req, res) => {
+  console.log("📨 /chat endpoint called");
   try {
     const { message, userId, action } = req.body || {};
+    console.log("📨 /chat request:", { 
+      hasMessage: !!message, 
+      hasUserId: !!userId, 
+      hasAction: !!action,
+      messagePreview: message ? message.substring(0, 50) : null 
+    });
     
     // Validate request: must have either message or action, and always need userId
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
-    if (!message && !action) return res.status(400).json({ error: "Must provide either 'message' or 'action'" });
+    if (!userId) {
+      console.error("❌ /chat: Missing userId");
+      return res.status(400).json({ error: "Missing userId" });
+    }
+    if (!message && !action) {
+      console.error("❌ /chat: Missing both message and action");
+      return res.status(400).json({ error: "Must provide either 'message' or 'action'" });
+    }
     // TODO: userId should come from verified auth middleware, not directly from req.body.
 
     if (!openai) {
@@ -1762,23 +2248,162 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
     // ======================================================
     // STEP 3: No pending transaction - proceed with normal chat flow
     // ======================================================
-    const targetMonthKey = getCurrentMonthKey(); // Chat currently always reflects the CURRENT month snapshot.
-    // If the user later references a different month, parse it and pass that monthKey instead.
+    const targetMonthKey = getCurrentMonthKey(); // Chat uses 3-month snapshot for better analysis
 
-    const snapshot = await buildMonthlySnapshotFromFirestore(userId, targetMonthKey);
-    const income = snapshot?.totalIncome ?? 0;
-    const spending = snapshot?.spendingTotals?.spending ?? 0;
-    const totalBudget = snapshot?.budgetSummary?.totalBudget ?? 0;
+    // Try 3-month snapshot first with shorter timeout, fallback to single month if it fails
+    let snapshot3Month = null;
+    let fallbackSnapshot = null;
+    
+    // Load snapshots - try 3-month first, fallback to single month
+    // Start both in parallel to maximize chance of getting 3-month data
+    console.log(`📊 Loading snapshots for chat - userId: ${userId}, monthKey: ${targetMonthKey}`);
+    
+    // Start both snapshot loads in parallel
+    // Use full snapshot (not fast) to get budget data for chat responses
+    const singleMonthPromise = buildMonthlySnapshotFromFirestore(userId, targetMonthKey).catch(err => {
+      console.warn("⏱️ Single-month snapshot error:", err.message);
+      return null;
+    });
+    
+    const threeMonthPromise = build3MonthSnapshot(userId).catch(err => {
+      console.warn("⏱️ 3-month snapshot error:", err.message);
+      return null;
+    });
+    
+    // Wait for both with a timeout - use whichever completes successfully
+    // Use longer timeout to allow 3-month snapshot to complete (it needs 3 snapshots × up to 6 seconds each)
+    try {
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Snapshot timeout")), 10000); // 10 second timeout for 3-month snapshot
+      });
+      
+      // Wait for both to complete or timeout
+      const results = await Promise.race([
+        Promise.all([singleMonthPromise, threeMonthPromise]),
+        timeoutPromise
+      ]);
+      
+      if (results && Array.isArray(results)) {
+        const [singleResult, threeResult] = results;
+        
+        // Prefer 3-month snapshot if available (even if it has less than 3 months)
+        // Use it if it has at least 1 month of data
+        // BUT also keep the full snapshot for budget data if available
+        if (threeResult && threeResult.months && Array.isArray(threeResult.months) && threeResult.months.length > 0) {
+          snapshot3Month = threeResult;
+          console.log("✅ 3-month snapshot loaded for chat:", {
+            monthsCount: snapshot3Month.months.length,
+            totalIncome: snapshot3Month.totals.totalIncome,
+            totalSpending: snapshot3Month.totals.totalSpending,
+            monthKeys: snapshot3Month.months.map(m => m.monthKey),
+          });
+          // If we have a full snapshot, use it for budget data even if we're using 3-month snapshot
+          if (singleResult && singleResult.budgetSummary) {
+            fallbackSnapshot = singleResult;
+            console.log("✅ Using full snapshot for budget data:", {
+              hasBudgetSummary: !!fallbackSnapshot.budgetSummary,
+              totalBudget: fallbackSnapshot.budgetSummary?.totalBudget || 0,
+            });
+          }
+        } else {
+          // 3-month snapshot failed or returned empty - log details for debugging
+          console.warn("⚠️ 3-month snapshot not available:", {
+            hasResult: !!threeResult,
+            resultType: threeResult ? typeof threeResult : 'null',
+            hasMonths: !!(threeResult && threeResult.months),
+            monthsType: threeResult?.months ? typeof threeResult.months : 'null',
+            monthsLength: threeResult?.months?.length || 0,
+            resultKeys: threeResult ? Object.keys(threeResult) : [],
+          });
+          
+          // Fallback to single month snapshot
+          if (singleResult) {
+            fallbackSnapshot = singleResult;
+            console.log("✅ Using single-month snapshot (3-month unavailable):", {
+              income: fallbackSnapshot.totalIncome,
+              spending: fallbackSnapshot.spendingTotals?.spending,
+              hasBudgetSummary: !!fallbackSnapshot.budgetSummary,
+              totalBudget: fallbackSnapshot.budgetSummary?.totalBudget || 0,
+            });
+          } else {
+            console.warn("⚠️ Both snapshots returned null or empty");
+            console.warn("⚠️ singleResult type:", typeof singleResult, "value:", singleResult);
+          }
+        }
+      }
+    } catch (timeoutErr) {
+      // Timeout occurred - try to get at least single month snapshot
+      console.warn("⏱️ Snapshot loading timed out, trying to get single month snapshot...");
+      try {
+        const quickTimeout = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Too slow")), 8000); // 8 second timeout to allow full snapshot to load
+        });
+        fallbackSnapshot = await Promise.race([singleMonthPromise, quickTimeout]);
+        if (fallbackSnapshot) {
+          console.log("✅ Got single-month snapshot after timeout:", {
+            hasBudgetSummary: !!fallbackSnapshot.budgetSummary,
+            totalBudget: fallbackSnapshot.budgetSummary?.totalBudget || 0,
+          });
+        } else {
+          console.warn("⚠️ Single-month snapshot still null after timeout");
+        }
+      } catch (e) {
+        console.warn("⏱️ Could not get snapshot in time");
+      }
+    }
+    
+    // Log final state
+    if (!snapshot3Month && !fallbackSnapshot) {
+      console.warn("⚠️ No snapshot data available - proceeding without financial data");
+    }
+    
+    // Extract current month data for compatibility
+    let income = 0;
+    let spending = 0;
+    
+    if (snapshot3Month && snapshot3Month.months && snapshot3Month.months.length > 0) {
+      // Use 3-month snapshot data
+      const currentMonthData = snapshot3Month.months[0];
+      income = currentMonthData.totalIncome || 0;
+      spending = currentMonthData.totalSpending || 0;
+    } else if (fallbackSnapshot) {
+      // Use single month fallback snapshot
+      income = fallbackSnapshot.totalIncome || 0;
+      spending = fallbackSnapshot.spendingTotals?.spending || 0;
+    }
+    
+    // Extract budget from snapshot if available
+    let totalBudget = 0;
+    if (fallbackSnapshot && fallbackSnapshot.budgetSummary && fallbackSnapshot.budgetSummary.totalBudget) {
+      totalBudget = fallbackSnapshot.budgetSummary.totalBudget;
+      console.log("✅ Extracted budget from snapshot:", totalBudget);
+    } else {
+      console.warn("⚠️ No budget data in fallbackSnapshot:", {
+        hasFallbackSnapshot: !!fallbackSnapshot,
+        hasBudgetSummary: !!(fallbackSnapshot && fallbackSnapshot.budgetSummary),
+        totalBudget: fallbackSnapshot?.budgetSummary?.totalBudget,
+      });
+    }
     const hasMeaningfulBudget = totalBudget > 0;
 
-    const snapshotStats = snapshot
+    const snapshotStats = snapshot3Month
       ? {
           userId,
           monthKey: targetMonthKey,
-          income,
-          spending,
-          savings: snapshot.savingsSummary?.savingsContrib,
-          dti: snapshot.debtSummary?.debtToIncomeRatio,
+          income3Month: snapshot3Month.totals.totalIncome,
+          spending3Month: snapshot3Month.totals.totalSpending,
+          avgMonthlyIncome: snapshot3Month.averages.monthlyIncome,
+          avgMonthlySpending: snapshot3Month.averages.monthlySpending,
+          monthsCount: snapshot3Month.months.length,
+        }
+      : fallbackSnapshot
+      ? {
+          userId,
+          monthKey: targetMonthKey,
+          income: fallbackSnapshot.totalIncome,
+          spending: fallbackSnapshot.spendingTotals?.spending,
+          totalBudget: fallbackSnapshot.budgetSummary?.totalBudget || 0,
+          type: "single-month-fallback",
         }
       : { userId, monthKey: targetMonthKey, snapshot: null };
     console.log("🧾 /chat snapshot stats:", snapshotStats);
@@ -1800,25 +2425,142 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
       );
     }
 
+    // Build user content with improved prompt engineering for better analysis
     let userContent = "";
+    
+    // Add context notes if needed
     if (promptNotes.length) {
-      userContent += promptNotes.join("\n") + "\n\n";
+      userContent += "CONTEXT NOTES:\n" + promptNotes.join("\n") + "\n\n";
     }
 
-    if (snapshot) {
-      userContent += `Here is the user's current-month finance snapshot (MYR):\n${JSON.stringify(snapshot, null, 2)}\n\n`;
+    // Format snapshot data clearly for LLM analysis
+    // Prefer 3-month snapshot, fallback to single month if available
+    if (snapshot3Month && snapshot3Month.months && snapshot3Month.months.length > 0) {
+      userContent += `FINANCIAL DATA FOR LAST 3 MONTHS:\n\n`;
+      
+      // Show data for each month
+      snapshot3Month.months.forEach((monthData, index) => {
+        const monthLabel = index === 0 ? "Current Month" : index === 1 ? "Previous Month" : "2 Months Ago";
+        userContent += `${monthLabel} (${monthData.monthKey}):\n`;
+        userContent += `  - Total Income: ${monthData.totalIncome} MYR\n`;
+        userContent += `  - Total Spending: ${monthData.totalSpending} MYR\n`;
+        userContent += `  - Net Cash Flow: ${monthData.netCashFlow} MYR\n`;
+        userContent += `  - Expenses Count: ${monthData.expensesCount}\n`;
+        userContent += `  - Income Records: ${monthData.incomesCount}\n`;
+        
+        if (Object.keys(monthData.categoryBreakdown).length > 0) {
+          userContent += `  - Top Categories:\n`;
+          const sortedCategories = Object.entries(monthData.categoryBreakdown)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5); // Top 5 categories per month
+          sortedCategories.forEach(([cat, amount]) => {
+            userContent += `    • ${cat}: ${amount} MYR\n`;
+          });
+        }
+        userContent += `\n`;
+      });
+      
+      // Show aggregated totals and averages
+      userContent += `3-MONTH TOTALS:\n`;
+      userContent += `  - Total Income (3 months): ${snapshot3Month.totals.totalIncome} MYR\n`;
+      userContent += `  - Total Spending (3 months): ${snapshot3Month.totals.totalSpending} MYR\n`;
+      userContent += `  - Total Net Cash Flow (3 months): ${snapshot3Month.totals.totalNetCashFlow} MYR\n`;
+      userContent += `\n`;
+      userContent += `3-MONTH AVERAGES:\n`;
+      userContent += `  - Average Monthly Income: ${snapshot3Month.averages.monthlyIncome} MYR\n`;
+      userContent += `  - Average Monthly Spending: ${snapshot3Month.averages.monthlySpending} MYR\n`;
+      userContent += `  - Average Monthly Net Cash Flow: ${snapshot3Month.averages.monthlyNetCashFlow} MYR\n`;
+      userContent += `\n`;
+      
+      // Show aggregated category breakdown
+      if (snapshot3Month.categoryBreakdown && Object.keys(snapshot3Month.categoryBreakdown).length > 0) {
+        userContent += `SPENDING BY CATEGORY (3-MONTH TOTAL):\n`;
+        const sortedCategories = Object.entries(snapshot3Month.categoryBreakdown)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10); // Top 10 categories
+        sortedCategories.forEach(([cat, amount]) => {
+          userContent += `  - ${cat}: ${amount} MYR\n`;
+        });
+        userContent += `\n`;
+      }
+      
+      userContent += `Note: This snapshot includes the last 3 months of financial data for better historical analysis.\n`;
+      userContent += `Use this data to identify trends, patterns, and provide informed financial recommendations.\n\n`;
+    } else if (fallbackSnapshot) {
+      // Fallback to single month snapshot format
+      userContent += `FINANCIAL DATA FOR CURRENT MONTH (${targetMonthKey}):\n`;
+      userContent += `Total Income: ${fallbackSnapshot.totalIncome} MYR\n`;
+      userContent += `Total Spending (consumption): ${fallbackSnapshot.spendingTotals?.spending || 0} MYR\n`;
+      userContent += `Net Cash Flow: ${fallbackSnapshot.spendingTotals?.netCashFlow || 0} MYR\n`;
+      userContent += `Number of Expenses: ${fallbackSnapshot.expensesCount || 0}\n`;
+      userContent += `Number of Income Records: ${fallbackSnapshot.incomesCount || 0}\n`;
+      
+      if (fallbackSnapshot.categoryBreakdown && Object.keys(fallbackSnapshot.categoryBreakdown).length > 0) {
+        userContent += `\nSPENDING BY CATEGORY:\n`;
+        const sortedCategories = Object.entries(fallbackSnapshot.categoryBreakdown)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10); // Top 10 categories
+        sortedCategories.forEach(([cat, amount]) => {
+          userContent += `  - ${cat}: ${amount} MYR\n`;
+        });
+      }
+      
+      // Include budget information if available
+      if (fallbackSnapshot.budgetSummary && fallbackSnapshot.budgetSummary.totalBudget > 0) {
+        userContent += `\nBUDGET STATUS:\n`;
+        userContent += `  - Total Budget: ${fallbackSnapshot.budgetSummary.totalBudget} MYR\n`;
+        userContent += `  - Total Actual Spending: ${fallbackSnapshot.budgetSummary.totalActual} MYR\n`;
+        const budgetRemaining = fallbackSnapshot.budgetSummary.totalBudget - fallbackSnapshot.budgetSummary.totalActual;
+        userContent += `  - Budget Remaining: ${budgetRemaining} MYR\n`;
+        const budgetUsedPct = fallbackSnapshot.budgetSummary.totalBudget > 0 
+          ? (fallbackSnapshot.budgetSummary.totalActual / fallbackSnapshot.budgetSummary.totalBudget) * 100 
+          : 0;
+        userContent += `  - Budget Utilization: ${budgetUsedPct.toFixed(1)}%\n`;
+        
+        if (fallbackSnapshot.budgetSummary.categories && fallbackSnapshot.budgetSummary.categories.length > 0) {
+          userContent += `  - Budget by Category:\n`;
+          fallbackSnapshot.budgetSummary.categories.forEach((cat) => {
+            if (cat.budgeted > 0) {
+              userContent += `    • ${cat.category}: Budgeted ${cat.budgeted} MYR, Actual ${cat.actual} MYR`;
+              if (cat.variance !== null && cat.variance !== undefined) {
+                userContent += `, ${cat.variance >= 0 ? 'over' : 'under'} by ${Math.abs(cat.variance).toFixed(2)} MYR`;
+              }
+              userContent += `\n`;
+            }
+          });
+        }
+      }
+      
+      userContent += `\nNote: This is current month data only. Historical trend analysis is not available.\n\n`;
     } else {
-      userContent += "Finance snapshot: null (no data was provided).\n\n";
+      // Even if snapshots failed, try to provide basic guidance
+      userContent += "FINANCIAL DATA: Unable to load detailed snapshot data at this time.\n";
+      userContent += "This may happen with large datasets or network issues.\n";
+      userContent += "Please try asking your question again, or check your internet connection.\n";
+      userContent += "You can also view your financial data directly in the app's dashboard.\n\n";
     }
 
-    userContent += `User question:\n${message}\n\nRules:\n` +
-      `- When they ask about 'my spending' or 'consumption spending', use spendingTotals.spending (NOT totalExpenses, which may include savings).\n` +
-      `- When they ask about 'my savings', use savingsSummary if available (shows active savings contributions and goals), otherwise use the top-level savings field.\n` +
-      `- When they ask about 'my income', use spendingTotals.income or totalIncome.\n` +
-      `- When they ask about 'my debt' or loans, use debtSummary for debt obligations AND savingsSummary for available savings/assets.\n` +
-      `- If you cannot compute something from the snapshot, say so plainly.\n` +
-      `- Give at most 3 concise, actionable recommendations.\n` +
-      `- Do NOT output fake exact numbers; only use numbers you can read from the snapshot.`;
+    // Improved prompt with clear instructions using prompt engineering techniques
+    userContent += `USER QUESTION: "${message}"\n\n`;
+    userContent += `ANALYSIS INSTRUCTIONS (follow these carefully):\n`;
+    userContent += `1. DATA-DRIVEN ANALYSIS: Use ONLY the financial data provided above. Never invent or estimate numbers.\n`;
+    userContent += `2. HISTORICAL CONTEXT: You have access to 3 months of financial data. Use this to:\n`;
+    userContent += `   - Identify trends (e.g., is spending increasing/decreasing month-over-month?)\n`;
+    userContent += `   - Assess financial stability (consistent income and spending patterns)\n`;
+    userContent += `   - Calculate averages for more reliable assessments\n`;
+    userContent += `   - Compare current month to previous months to spot changes\n`;
+    userContent += `3. SPENDING ANALYSIS: When analyzing spending behavior:\n`;
+    userContent += `   - Use monthly averages for more reliable assessments (not just current month)\n`;
+    userContent += `   - Analyze category breakdown across all 3 months to identify consistent patterns\n`;
+    userContent += `   - Compare spending trends month-over-month\n`;
+    userContent += `   - Compare average spending to average income to assess financial health\n`;
+    userContent += `4. INCOME ANALYSIS: Reference both current month and 3-month averages when discussing earnings.\n`;
+    userContent += `   - Use average monthly income for loan affordability calculations\n`;
+    userContent += `   - Note if income is stable, increasing, or decreasing over the 3 months\n`;
+    userContent += `5. ACTIONABLE INSIGHTS: Provide specific, actionable recommendations based on the actual data shown.\n`;
+    userContent += `6. DATA LIMITATIONS: If data is missing or limited, acknowledge this clearly and provide general guidance.\n`;
+    userContent += `7. RESPONSE FORMAT: Keep responses clear, concise, and focused. Provide 2-3 key insights with actionable recommendations.\n`;
+    userContent += `8. TONE: Be helpful, supportive, and direct. Use the actual numbers from the data to build credibility.\n`;
 
     const lower = message.toLowerCase();
     const asksNewLoan =
@@ -1835,26 +2577,48 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
 
     if (asksNewLoan) {
       userContent +=
-        "\n\nThe user is asking about taking a NEW loan. Use `debtSummary` and `savingsSummary` to assess their readiness:\n" +
-        "- Look at debtSummary.debtToIncomeRatio, debtSummary.totalDebt, and debtSummary.totalMonthlyDebtPayment.\n" +
-        "- Look at savingsSummary.savingsRate and savingsSummary.emergencyFundMonths.\n" +
-        "- Explain why taking a new loan looks manageable or risky based on these numbers.\n" +
-        "- Suggest improvements before taking a loan (e.g., reduce DTI, build an emergency fund).\n" +
-        "- Do NOT give guarantees; this is not formal financial advice.\n";
+        "\n\nThe user is asking about taking a NEW loan. Use the 3-month financial data to assess their readiness:\n" +
+        "- Calculate debt-to-income ratio using AVERAGE monthly income (not just current month) for more reliable assessment.\n" +
+        "- Analyze spending trends: Is spending consistent, increasing, or decreasing over the 3 months?\n" +
+        "- Assess cash flow stability: Is net cash flow positive consistently across all 3 months?\n" +
+        "- Look at spending patterns: Are there any concerning trends (e.g., spending increasing faster than income)?\n" +
+        "- Calculate affordability: Can they afford the new loan payment based on their average monthly net cash flow?\n" +
+        "- Consider financial stability: Have they maintained positive cash flow for at least 2-3 months?\n" +
+        "- Explain why taking a new loan looks manageable or risky based on these 3-month trends.\n" +
+        "- Suggest improvements before taking a loan (e.g., reduce spending, build emergency fund, stabilize income).\n" +
+        "- Do NOT give guarantees; this is not formal financial advice.\n" +
+        "- IMPORTANT: Use the 3-month averages and trends, not just the current month, for a more accurate assessment.\n";
     }
 
-    // First API call with tools
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: CHAT_SYSTEM_PROMPT },
-        { role: "user", content: userContent },
-      ],
-      tools: [CREATE_TRANSACTION_TOOL],
-      tool_choice: "auto", // Let the model decide when to use the tool
-      max_tokens: 500,
-      temperature: 0.7,
-    });
+    // First API call with tools (with timeout to prevent hanging)
+    let response;
+    try {
+      const openaiPromise = openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: CHAT_SYSTEM_PROMPT },
+          { role: "user", content: userContent },
+        ],
+        tools: [CREATE_TRANSACTION_TOOL],
+        tool_choice: "auto", // Let the model decide when to use the tool
+        max_tokens: 500,
+        temperature: 0.7,
+      });
+      
+      // Add 15 second timeout to OpenAI API call
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("OpenAI API timeout")), 15000);
+      });
+      
+      response = await Promise.race([openaiPromise, timeoutPromise]);
+    } catch (err) {
+      console.error("❌ OpenAI API call failed:", err.message);
+      // Return a helpful error message instead of failing completely
+      return res.json({
+        type: "normal",
+        message: "I'm having trouble processing your request right now. This might be due to a slow connection or API timeout. Please try again in a moment.",
+      });
+    }
 
     const assistantMessage = response.choices[0]?.message;
     let finalReply = assistantMessage?.content || "";
@@ -2530,4 +3294,21 @@ app.post("/api/auth/reset-password", async (req, res) => {
 // ======================================================
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => console.log(`✅ Backend running on http://localhost:${PORT}`));
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    services: {
+      openai: openai ? "configured" : "not configured",
+      firestore: db ? "configured" : "not configured",
+    }
+  });
+});
+
+// Listen on all interfaces (0.0.0.0) so it's accessible from other devices on the network
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Backend running on http://0.0.0.0:${PORT}`);
+  console.log(`✅ Accessible from network at http://192.168.0.97:${PORT}`);
+  console.log(`✅ Health check: http://localhost:${PORT}/health`);
+});

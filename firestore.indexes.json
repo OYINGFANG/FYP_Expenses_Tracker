@@ -1,7 +1,7 @@
 {
   "indexes": [
     {
-      "collectionGroup": "NOTIFICATIONS",
+      "collectionGroup": "EXPENSES",
       "queryScope": "COLLECTION",
       "fields": [
         {
@@ -9,8 +9,58 @@
           "order": "ASCENDING"
         },
         {
-          "fieldPath": "created_at",
-          "order": "DESCENDING"
+          "fieldPath": "exp_date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "INCOME",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "user_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "inc_date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "EXPENSES",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "user_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "exp_date",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "exp_date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "INCOME",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "user_id",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "inc_date",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "inc_date",
+          "order": "ASCENDING"
         }
       ]
     }

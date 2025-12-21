@@ -1057,7 +1057,7 @@ export default function ProfileScreen() {
                   <Ionicons name="star" size={14} color="#F59E0B" />
                   <View style={styles.joinedTextContainer}>
                     <Text style={styles.joinedText}>Member for {memberDays} days</Text>
-                    <Text style={styles.joinedText}>• Since {joined}</Text>
+                    <Text style={styles.joinedText}>Since {joined}</Text>
                   </View>
                 </View>
               </View>
@@ -1157,6 +1157,15 @@ export default function ProfileScreen() {
               label="Currency"
               value={currency}
               onPress={() => setChangeCurrencyModalVisible(true)}
+            />
+            <Divider />
+            <SettingItem
+              icon="help-circle-outline"
+              iconBg="#DBEAFE"
+              iconColor="#2563EB"
+              label="FAQ & Help"
+              value="Learn how to use the app"
+              onPress={() => router.push("/screen/FAQ")}
             />
           </View>
         </View>

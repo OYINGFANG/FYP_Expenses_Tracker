@@ -395,7 +395,7 @@ export default function Notifications() {
 
           {/* Type Filters */}
           <View style={styles.filterRow}>
-            <Text style={styles.filterLabel}>Type:</Text>
+            <Text style={styles.filterLabel}>Type:   </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
