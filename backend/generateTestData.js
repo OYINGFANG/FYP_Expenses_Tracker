@@ -191,13 +191,7 @@ function randomDateInMonth(year, month) {
   return new Date(year, month, day, hour, minute, 0);
 }
 
-// Helper to ensure date is in 2025
-function ensure2025Date(date) {
-  if (date.getFullYear() !== 2025) {
-    return new Date(2025, date.getMonth(), date.getDate(), date.getHours(), date.getMinutes(), 0);
-  }
-  return date;
-}
+// Helper removed - we'll use actual dates from today going back
 
 function getMonthKey(date) {
   const year = date.getFullYear();
@@ -214,25 +208,45 @@ function randomExpenseAmount(category, expenseType = null) {
   
   // Special handling for Food category with different meal types
   if (category === "Food" && expenseType && config[expenseType]) {
-    // Use specific amount range for meal type - prioritize small amounts
-    if (Math.random() < 0.85) {
+    // Use specific amount range for meal type - prioritize small amounts (90% chance)
+    if (Math.random() < 0.90) {
       return randomChoice(config[expenseType]);
     }
-    // Fallback to common amounts
+    // Fallback to common amounts (prioritize small ones)
+    const smallAmounts = config.common.filter(amt => amt <= 30);
+    if (smallAmounts.length > 0 && Math.random() < 0.7) {
+      return randomChoice(smallAmounts);
+    }
     return randomChoice(config.common || [10, 15, 20]);
   }
   
-  // 80% chance to use common amount (which includes many small amounts), 20% random
-  if (Math.random() < 0.8 && config.common) {
+  // For all categories, prioritize small amounts (5, 10, 15, etc.)
+  // 70% chance to use small amounts (<= 30), 30% chance for larger amounts
+  if (Math.random() < 0.70 && config.common) {
+    const smallAmounts = config.common.filter(amt => amt <= 30);
+    if (smallAmounts.length > 0) {
+      return randomChoice(smallAmounts);
+    }
+    // If no small amounts in common, use the smallest common amounts
+    const sortedCommon = [...config.common].sort((a, b) => a - b);
+    const smallRange = sortedCommon.slice(0, Math.ceil(sortedCommon.length * 0.4));
+    if (smallRange.length > 0) {
+      return randomChoice(smallRange);
+    }
     return randomChoice(config.common);
   }
-  // For random, bias towards smaller amounts
-  const randomAmount = randomFloat(config.min, config.max);
-  // 60% chance to be in lower half of range
-  if (Math.random() < 0.6) {
-    return randomFloat(config.min, (config.min + config.max) / 2);
+  
+  // For remaining 30%, still bias towards smaller amounts
+  if (config.common && Math.random() < 0.6) {
+    return randomChoice(config.common);
   }
-  return randomAmount;
+  
+  // For random, strongly bias towards smaller amounts (80% in lower third)
+  const randomAmount = randomFloat(config.min, config.max);
+  if (Math.random() < 0.80) {
+    return Math.round(randomFloat(config.min, config.min + (config.max - config.min) * 0.33) * 100) / 100;
+  }
+  return Math.round(randomAmount * 100) / 100;
 }
 
 function randomIncomeAmount(category) {
@@ -275,8 +289,23 @@ function generateExpenses(userId, year, month, count, categoryDistribution) {
   const foodExpenseTypes = ["lunch", "dinner", "grocery", "snack", "general"];
   const foodTypeWeights = [0.35, 0.30, 0.20, 0.10, 0.05]; // More lunch/dinner, less snacks
   
+  // Helper function for weighted random selection
+  function weightedRandomChoice(weights) {
+    const categories = Object.keys(weights);
+    const values = Object.values(weights);
+    const total = values.reduce((sum, val) => sum + val, 0);
+    let random = Math.random() * total;
+    for (let i = 0; i < categories.length; i++) {
+      random -= values[i];
+      if (random <= 0) {
+        return categories[i];
+      }
+    }
+    return categories[categories.length - 1];
+  }
+  
   for (let i = 0; i < count; i++) {
-    const category = randomChoice(Object.keys(categoryDistribution));
+    const category = weightedRandomChoice(categoryDistribution);
     let amount, merchant, expenseType = null;
     
     // Special handling for Food - generate realistic meal patterns
@@ -306,26 +335,26 @@ function generateExpenses(userId, year, month, count, categoryDistribution) {
         const day = randomInt(1, new Date(year, month + 1, 0).getDate());
         const hour = randomInt(11, 14);
         const minute = randomInt(0, 59);
-        date = ensure2025Date(new Date(year, month, day, hour, minute, 0));
+        date = new Date(year, month, day, hour, minute, 0);
       } else if (expenseType === "dinner") {
         // Dinner: 6 PM - 10 PM
         const day = randomInt(1, new Date(year, month + 1, 0).getDate());
         const hour = randomInt(18, 22);
         const minute = randomInt(0, 59);
-        date = ensure2025Date(new Date(year, month, day, hour, minute, 0));
+        date = new Date(year, month, day, hour, minute, 0);
       } else if (expenseType === "grocery") {
         // Grocery: Usually weekends or evenings
         const day = randomInt(1, new Date(year, month + 1, 0).getDate());
         const isWeekend = new Date(year, month, day).getDay() === 0 || new Date(year, month, day).getDay() === 6;
         const hour = isWeekend ? randomInt(10, 18) : randomInt(18, 21);
         const minute = randomInt(0, 59);
-        date = ensure2025Date(new Date(year, month, day, hour, minute, 0));
+        date = new Date(year, month, day, hour, minute, 0);
       } else {
         // Snacks/general: Random time
-        date = ensure2025Date(randomDateInMonth(year, month));
+        date = randomDateInMonth(year, month);
       }
     } else {
-      date = ensure2025Date(randomDateInMonth(year, month));
+      date = randomDateInMonth(year, month);
     }
     
     const paymentMethod = randomChoice(PAYMENT_METHODS);
@@ -337,9 +366,9 @@ function generateExpenses(userId, year, month, count, categoryDistribution) {
       exp_payment_method: paymentMethod,
       exp_total: amount,
       exp_notes: merchant,
-      exp_date: date.toISOString(),
-      created_at: admin.firestore.Timestamp.fromDate(date),
-      updated_at: admin.firestore.Timestamp.fromDate(date),
+      exp_date: date.toISOString(), // ISO string format (matches frontend AddRecord.tsx)
+      created_at: date.toISOString(), // Use ISO string for consistency
+      updated_at: date.toISOString(), // Use ISO string for consistency
     });
   }
   
@@ -354,8 +383,8 @@ function generateIncome(userId, year, month, baseSalary, hasBonus = false, hasFr
   const userPathStr = userPath(userId);
   const firstDay = new Date(year, month, 1, 9, 0, 0);
   
-  // Main salary (always on 1st or 2nd of month) - ensure 2025
-  const salaryDate = ensure2025Date(new Date(year, month, randomInt(1, 2), 9, 0, 0));
+  // Main salary (always on 1st or 2nd of month)
+  const salaryDate = new Date(year, month, randomInt(1, 2), 9, 0, 0);
   income.push({
     inc_id: `INC${Date.now()}SAL${Math.random().toString(36).substr(2, 5)}`,
     user_id: userPathStr,
@@ -363,14 +392,14 @@ function generateIncome(userId, year, month, baseSalary, hasBonus = false, hasFr
     inc_payment_method: "Bank",
     inc_total: baseSalary,
     inc_notes: "Monthly Salary",
-    inc_date: salaryDate.toISOString(),
-    created_at: admin.firestore.Timestamp.fromDate(salaryDate),
-    updated_at: admin.firestore.Timestamp.fromDate(salaryDate),
+    inc_date: salaryDate.toISOString(), // ISO string format
+    created_at: salaryDate.toISOString(), // Use ISO string for consistency
+    updated_at: salaryDate.toISOString(), // Use ISO string for consistency
   });
   
   // Bonus (if applicable) - usually mid-month
   if (hasBonus && Math.random() < 0.3) {
-    const bonusDate = ensure2025Date(randomDateInMonth(year, month));
+    const bonusDate = randomDateInMonth(year, month);
     income.push({
       inc_id: `INC${Date.now()}BNS${Math.random().toString(36).substr(2, 5)}`,
       user_id: userPathStr,
@@ -379,14 +408,14 @@ function generateIncome(userId, year, month, baseSalary, hasBonus = false, hasFr
       inc_total: randomIncomeAmount("Bonus"),
       inc_notes: "Performance Bonus",
       inc_date: bonusDate.toISOString(),
-      created_at: admin.firestore.Timestamp.fromDate(bonusDate),
-      updated_at: admin.firestore.Timestamp.fromDate(bonusDate),
+      created_at: bonusDate.toISOString(),
+      updated_at: bonusDate.toISOString(),
     });
   }
   
   // Freelance (if applicable) - random dates
   if (hasFreelance && Math.random() < 0.4) {
-    const freelanceDate = ensure2025Date(randomDateInMonth(year, month));
+    const freelanceDate = randomDateInMonth(year, month);
     income.push({
       inc_id: `INC${Date.now()}FRL${Math.random().toString(36).substr(2, 5)}`,
       user_id: userPathStr,
@@ -395,14 +424,14 @@ function generateIncome(userId, year, month, baseSalary, hasBonus = false, hasFr
       inc_total: randomIncomeAmount("Freelance"),
       inc_notes: "Freelance Project",
       inc_date: freelanceDate.toISOString(),
-      created_at: admin.firestore.Timestamp.fromDate(freelanceDate),
-      updated_at: admin.firestore.Timestamp.fromDate(freelanceDate),
+      created_at: freelanceDate.toISOString(),
+      updated_at: freelanceDate.toISOString(),
     });
   }
   
   // Investment returns (occasional)
   if (Math.random() < 0.2) {
-    const invDate = ensure2025Date(randomDateInMonth(year, month));
+    const invDate = randomDateInMonth(year, month);
     income.push({
       inc_id: `INC${Date.now()}INV${Math.random().toString(36).substr(2, 5)}`,
       user_id: userPathStr,
@@ -411,8 +440,8 @@ function generateIncome(userId, year, month, baseSalary, hasBonus = false, hasFr
       inc_total: randomIncomeAmount("Investment"),
       inc_notes: "Investment Returns",
       inc_date: invDate.toISOString(),
-      created_at: admin.firestore.Timestamp.fromDate(invDate),
-      updated_at: admin.firestore.Timestamp.fromDate(invDate),
+      created_at: invDate.toISOString(),
+      updated_at: invDate.toISOString(),
     });
   }
   
@@ -425,6 +454,7 @@ function generateIncome(userId, year, month, baseSalary, hasBonus = false, hasFr
 function generateSavingsGoals(userId, scenario) {
   const goals = [];
   const userPathStr = userPath(userId);
+  const now = new Date();
   
   const timestamp = Date.now();
   
@@ -437,11 +467,11 @@ function generateSavingsGoals(userId, scenario) {
       target_amount: 5000,
       current_amount: 800, // Very low progress
       monthly_target: 200,
-      deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 11, 1)),
+      deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 6, 1)),
       category: "Emergency",
       notes: "Struggling to save",
-      created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 1)),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 5, 1)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
     // Maybe one more goal with no progress
@@ -453,11 +483,11 @@ function generateSavingsGoals(userId, scenario) {
         target_amount: 3000,
         current_amount: 150, // Almost no progress
         monthly_target: 100,
-        deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 8, 1)),
+        deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 3, 1)),
         category: "Electronics",
         notes: "Haven't saved much",
-        created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 1)),
-        updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+        created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 2, 1)),
+        updated_at: admin.firestore.Timestamp.fromDate(now),
       });
     }
   } else if (scenario === "high") {
@@ -469,11 +499,11 @@ function generateSavingsGoals(userId, scenario) {
       target_amount: 10000,
       current_amount: 10000, // Completed
       monthly_target: 1500,
-      deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 5, 30)),
+      deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 3, 30)),
       category: "Emergency",
       notes: "6 months expenses",
-      created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 1)),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 5, 1)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
     goals.push({
@@ -483,11 +513,11 @@ function generateSavingsGoals(userId, scenario) {
       target_amount: 8000,
       current_amount: 6500, // In progress
       monthly_target: 1000,
-      deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 5, 1)),
+      deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 3, 1)),
       category: "Travel",
       notes: "Saving for trip",
-      created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 1)),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 4, 1)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
     goals.push({
@@ -497,11 +527,11 @@ function generateSavingsGoals(userId, scenario) {
       target_amount: 5000,
       current_amount: 3200, // In progress
       monthly_target: 800,
-      deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 3, 1)),
+      deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 1, 1)),
       category: "Electronics",
       notes: "MacBook Pro",
-      created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 1)),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 3, 1)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
     goals.push({
@@ -511,11 +541,11 @@ function generateSavingsGoals(userId, scenario) {
       target_amount: 15000,
       current_amount: 8500, // In progress
       monthly_target: 2000,
-      deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 7, 1)),
+      deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 5, 1)),
       category: "Investment",
       notes: "Stock market investment",
-      created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 15)),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 5, 15)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
   } else {
     // Good health: Some goals in progress
@@ -526,11 +556,11 @@ function generateSavingsGoals(userId, scenario) {
       target_amount: 8000,
       current_amount: 4200, // In progress
       monthly_target: 1000,
-      deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 7, 1)),
+      deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 5, 1)),
       category: "Emergency",
       notes: "3 months expenses",
-      created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 1)),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 4, 1)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
     goals.push({
@@ -540,11 +570,11 @@ function generateSavingsGoals(userId, scenario) {
       target_amount: 3500,
       current_amount: 1800, // In progress
       monthly_target: 500,
-      deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 4, 1)),
+      deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 2, 1)),
       category: "Electronics",
       notes: "iPhone 15",
-      created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 1)),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 3, 1)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
     goals.push({
@@ -554,11 +584,11 @@ function generateSavingsGoals(userId, scenario) {
       target_amount: 5000,
       current_amount: 2100, // In progress
       monthly_target: 600,
-      deadline: admin.firestore.Timestamp.fromDate(new Date(2025, 6, 1)),
+      deadline: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() + 4, 1)),
       category: "Travel",
       notes: "Bali trip",
-      created_at: admin.firestore.Timestamp.fromDate(new Date(2025, 0, 1)),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      created_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 2, 1)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
   }
   
@@ -572,12 +602,14 @@ function generateDebts(userId, scenario) {
   const debts = [];
   const userPathStr = userPath(userId);
   const now = new Date();
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
   
   const debtTimestamp = Date.now();
   
   if (scenario === "bad") {
     // Bad health: Multiple debts, high balances, struggling to pay
-    const startDate1 = new Date(2025, 0, 1);
+    const startDate1 = new Date(sixMonthsAgo);
+    const targetDate1 = new Date(now.getFullYear() + 1, now.getMonth() + 6, 1);
     debts.push({
       id: `DEBT${debtTimestamp}1${Math.random().toString(36).substr(2, 5)}`,
       user_id: userPathStr,
@@ -586,13 +618,14 @@ function generateDebts(userId, scenario) {
       original_amount: 8000,
       current_balance: 7200, // High balance, slow progress
       monthly_payment: 300, // Minimum payment only
-      target_date: "2026-12-01",
+      target_date: targetDate1.toISOString().split('T')[0],
       start_date: admin.firestore.Timestamp.fromDate(startDate1),
       created_at: admin.firestore.Timestamp.fromDate(startDate1),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
-    const startDate2 = new Date(2025, 0, 1);
+    const startDate2 = new Date(sixMonthsAgo);
+    const targetDate2 = new Date(now.getFullYear() + 1, now.getMonth(), 1);
     debts.push({
       id: `DEBT${debtTimestamp}2${Math.random().toString(36).substr(2, 5)}`,
       user_id: userPathStr,
@@ -601,15 +634,16 @@ function generateDebts(userId, scenario) {
       original_amount: 15000,
       current_balance: 13200, // High balance
       monthly_payment: 600, // Struggling with payments
-      target_date: "2026-06-01",
+      target_date: targetDate2.toISOString().split('T')[0],
       start_date: admin.firestore.Timestamp.fromDate(startDate2),
       created_at: admin.firestore.Timestamp.fromDate(startDate2),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
     // Sometimes a third debt
     if (Math.random() < 0.4) {
-      const startDate3 = new Date(2025, 0, 1);
+      const startDate3 = new Date(sixMonthsAgo);
+      const targetDate3 = new Date(now.getFullYear() + 2, now.getMonth() + 1, 1);
       debts.push({
         id: `DEBT${debtTimestamp}3${Math.random().toString(36).substr(2, 5)}`,
         user_id: userPathStr,
@@ -618,49 +652,52 @@ function generateDebts(userId, scenario) {
         original_amount: 50000,
         current_balance: 42000, // Large debt
         monthly_payment: 1200,
-        target_date: "2027-03-01",
+        target_date: targetDate3.toISOString().split('T')[0],
         start_date: admin.firestore.Timestamp.fromDate(startDate3),
         created_at: admin.firestore.Timestamp.fromDate(startDate3),
-        updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+        updated_at: admin.firestore.Timestamp.fromDate(now),
       });
     }
   } else if (scenario === "high") {
     // High health: Has manageable debt with consistent payments
-      const startDate1 = new Date(2025, 0, 1);
+    const startDate1 = new Date(now.getFullYear(), now.getMonth() - 4, 1);
+    const targetDate1 = new Date(now.getFullYear(), now.getMonth() + 5, 1);
+    debts.push({
+      id: `DEBT${debtTimestamp}1${Math.random().toString(36).substr(2, 5)}`,
+      user_id: userPathStr,
+      name: "Credit Card",
+      type: "Credit Card",
+      original_amount: 5000,
+      current_balance: 2800, // Making good progress
+      monthly_payment: 500, // Consistent payment
+      target_date: targetDate1.toISOString().split('T')[0],
+      start_date: admin.firestore.Timestamp.fromDate(startDate1),
+      created_at: admin.firestore.Timestamp.fromDate(startDate1),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
+    });
+    
+    // Sometimes a second manageable debt
+    if (Math.random() < 0.5) {
+      const startDate2 = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+      const targetDate2 = new Date(now.getFullYear(), now.getMonth() + 7, 1);
       debts.push({
-        id: `DEBT${debtTimestamp}1${Math.random().toString(36).substr(2, 5)}`,
+        id: `DEBT${debtTimestamp}2${Math.random().toString(36).substr(2, 5)}`,
         user_id: userPathStr,
-        name: "Credit Card",
-        type: "Credit Card",
-        original_amount: 5000,
-        current_balance: 2800, // Making good progress
-        monthly_payment: 500, // Consistent payment
-        target_date: "2025-09-01",
-        start_date: admin.firestore.Timestamp.fromDate(startDate1),
-        created_at: admin.firestore.Timestamp.fromDate(startDate1),
-        updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+        name: "Personal Loan",
+        type: "Personal Loan",
+        original_amount: 8000,
+        current_balance: 5200, // Good progress
+        monthly_payment: 600, // Consistent payment
+        target_date: targetDate2.toISOString().split('T')[0],
+        start_date: admin.firestore.Timestamp.fromDate(startDate2),
+        created_at: admin.firestore.Timestamp.fromDate(startDate2),
+        updated_at: admin.firestore.Timestamp.fromDate(now),
       });
-      
-      // Sometimes a second manageable debt
-      if (Math.random() < 0.5) {
-        const startDate2 = new Date(2025, 0, 1);
-        debts.push({
-          id: `DEBT${debtTimestamp}2${Math.random().toString(36).substr(2, 5)}`,
-          user_id: userPathStr,
-          name: "Personal Loan",
-          type: "Personal Loan",
-          original_amount: 8000,
-          current_balance: 5200, // Good progress
-          monthly_payment: 600, // Consistent payment
-          target_date: "2025-11-01",
-          start_date: admin.firestore.Timestamp.fromDate(startDate2),
-          created_at: admin.firestore.Timestamp.fromDate(startDate2),
-          updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
-        });
-      }
+    }
   } else {
     // Good health: Some manageable debts
-    const startDate1 = new Date(2025, 0, 1);
+    const startDate1 = new Date(now.getFullYear(), now.getMonth() - 4, 1);
+    const targetDate1 = new Date(now.getFullYear(), now.getMonth() + 4, 1);
     debts.push({
       id: `DEBT${debtTimestamp}1${Math.random().toString(36).substr(2, 5)}`,
       user_id: userPathStr,
@@ -669,13 +706,14 @@ function generateDebts(userId, scenario) {
       original_amount: 5000,
       current_balance: 3200, // In progress
       monthly_payment: 500,
-      target_date: "2025-08-01",
+      target_date: targetDate1.toISOString().split('T')[0],
       start_date: admin.firestore.Timestamp.fromDate(startDate1),
       created_at: admin.firestore.Timestamp.fromDate(startDate1),
-      updated_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      updated_at: admin.firestore.Timestamp.fromDate(now),
     });
     
-    const startDate2 = new Date(2025, 0, 1);
+    const startDate2 = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const targetDate2 = new Date(now.getFullYear(), now.getMonth() + 7, 1);
     debts.push({
       id: `DEBT${debtTimestamp}2${Math.random().toString(36).substr(2, 5)}`,
       user_id: userPathStr,
@@ -684,7 +722,7 @@ function generateDebts(userId, scenario) {
       original_amount: 10000,
       current_balance: 7200, // In progress
       monthly_payment: 800,
-      target_date: "2025-12-01",
+      target_date: targetDate2.toISOString().split('T')[0],
       start_date: admin.firestore.Timestamp.fromDate(startDate2),
       created_at: admin.firestore.Timestamp.fromDate(startDate2),
       updated_at: admin.firestore.Timestamp.fromDate(now),
@@ -700,13 +738,17 @@ function generateDebts(userId, scenario) {
 function generateDebtPayments(debt, monthsBack, scenario = "good") {
   const payments = [];
   const startDate = debt.start_date.toDate();
-  const endDate = new Date(2025, 5, 30); // End of June 2025
+  const now = new Date();
   
-  // Generate payments for each month since debt started (in 2025)
-  for (let i = 0; i < monthsBack; i++) {
-    const paymentDate = new Date(2025, startDate.getMonth() + i, randomInt(1, 5)); // Payment usually early in month
+  // Calculate how many months have passed since debt started
+  const monthsSinceStart = Math.max(0, (now.getFullYear() - startDate.getFullYear()) * 12 + (now.getMonth() - startDate.getMonth()));
+  const actualMonthsBack = Math.min(monthsBack, monthsSinceStart);
+  
+  // Generate payments for each month since debt started
+  for (let i = 0; i < actualMonthsBack; i++) {
+    const paymentDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, randomInt(1, 5)); // Payment usually early in month
     
-    if (paymentDate > endDate) break;
+    if (paymentDate > now) break;
     
     if (scenario === "bad") {
       // Bad health: Frequently miss payments (25% chance), or pay less than required
@@ -721,8 +763,17 @@ function generateDebtPayments(debt, monthsBack, scenario = "good") {
         note: `Monthly payment ${i + 1}${paymentAmount < debt.monthly_payment ? " (partial)" : ""}`,
         created_at: admin.firestore.Timestamp.fromDate(paymentDate),
       });
+    } else if (scenario === "high") {
+      // High health (good health user): ALWAYS pay consistently every month, never miss
+      payments.push({
+        user_id: debt.user_id,
+        amount: debt.monthly_payment,
+        date_iso: paymentDate.toISOString(),
+        note: `Monthly payment ${i + 1}`,
+        created_at: admin.firestore.Timestamp.fromDate(paymentDate),
+      });
     } else {
-      // Good/High health: Always pay on time, sometimes extra
+      // Good health: Always pay on time, sometimes extra
       payments.push({
         user_id: debt.user_id,
         amount: debt.monthly_payment,
@@ -742,13 +793,13 @@ function generateDebtPayments(debt, monthsBack, scenario = "good") {
 function generateSavingsContributions(goal, monthsBack, scenario = "high") {
   const contributions = [];
   const startDate = goal.created_at.toDate();
-  const endDate = new Date(2025, 5, 30); // End of June 2025
+  const now = new Date();
   
-  // Generate contributions for each month (in 2025)
+  // Generate contributions for each month since goal was created
   for (let i = 0; i < monthsBack; i++) {
-    const contribDate = new Date(2025, startDate.getMonth() + i, randomInt(1, 10)); // Usually early in month
+    const contribDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, randomInt(1, 10)); // Usually early in month
     
-    if (contribDate > endDate) break;
+    if (contribDate > now) break;
     
     const baseAmount = goal.monthly_target || 500;
     
@@ -813,7 +864,7 @@ function generateSavingsBadges(userId, savingsGoals, contributions, scenario) {
       title: BADGE_DEFINITIONS.first_goal_completed.title,
       description: BADGE_DEFINITIONS.first_goal_completed.description,
       icon: BADGE_DEFINITIONS.first_goal_completed.icon,
-      earned_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      earned_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 1, 15)),
     });
     
     // Big goal completed (Emergency Fund is RM 10,000)
@@ -823,7 +874,7 @@ function generateSavingsBadges(userId, savingsGoals, contributions, scenario) {
       title: BADGE_DEFINITIONS.big_goal_completed.title,
       description: BADGE_DEFINITIONS.big_goal_completed.description,
       icon: BADGE_DEFINITIONS.big_goal_completed.icon,
-      earned_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 15)),
+      earned_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 1, 15)),
     });
     
     // Streak 3 months (has consistent contributions)
@@ -833,7 +884,7 @@ function generateSavingsBadges(userId, savingsGoals, contributions, scenario) {
       title: BADGE_DEFINITIONS.streak_3_months.title,
       description: BADGE_DEFINITIONS.streak_3_months.description,
       icon: BADGE_DEFINITIONS.streak_3_months.icon,
-      earned_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 1)),
+      earned_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 2, 1)),
     });
   } else if (scenario === "bad") {
     // Bad health: No badges earned (struggling to save)
@@ -845,7 +896,7 @@ function generateSavingsBadges(userId, savingsGoals, contributions, scenario) {
         title: BADGE_DEFINITIONS.streak_3_months.title,
         description: BADGE_DEFINITIONS.streak_3_months.description,
         icon: BADGE_DEFINITIONS.streak_3_months.icon,
-        earned_at: admin.firestore.Timestamp.fromDate(new Date(2025, 2, 1)),
+        earned_at: admin.firestore.Timestamp.fromDate(new Date(now.getFullYear(), now.getMonth() - 2, 1)),
       });
     }
   }
@@ -904,22 +955,24 @@ async function generateUserData(userId, scenario, monthsBack = 6) {
   const config = {
     bad: {
       baseSalary: 4500,
-      expenseCountPerMonth: { min: 50, max: 65 }, // Much more expenses, especially food
+      // Ensure at least 250 expenses over 6 months: 250/6 = ~42 per month minimum
+      expenseCountPerMonth: { min: 45, max: 65 }, // 45*6 = 270 minimum (exceeds 250 requirement)
       hasBonus: false,
       hasFreelance: false,
       categoryDistribution: {
-        Food: 0.50, Transport: 0.12, Housing: 0.20, Shopping: 0.08,
-        Bills: 0.06, Entertainment: 0.02, Healthcare: 0.01, Education: 0.00, Others: 0.01
+        Food: 0.55, Transport: 0.12, Housing: 0.20, Shopping: 0.07,
+        Bills: 0.04, Entertainment: 0.01, Healthcare: 0.01, Education: 0.00, Others: 0.00
       },
     },
     high: {
       baseSalary: 8500,
-      expenseCountPerMonth: { min: 45, max: 60 }, // More expenses, especially food
+      // Ensure at least 250 expenses over 6 months: 250/6 = ~42 per month minimum
+      expenseCountPerMonth: { min: 45, max: 60 }, // 45*6 = 270 minimum (exceeds 250 requirement)
       hasBonus: true,
       hasFreelance: true,
       categoryDistribution: {
-        Food: 0.45, Transport: 0.10, Housing: 0.18, Shopping: 0.08,
-        Bills: 0.08, Entertainment: 0.06, Healthcare: 0.03, Education: 0.01, Others: 0.01
+        Food: 0.50, Transport: 0.10, Housing: 0.18, Shopping: 0.08,
+        Bills: 0.08, Entertainment: 0.05, Healthcare: 0.01, Education: 0.00, Others: 0.00
       },
     },
   };
@@ -931,36 +984,74 @@ async function generateUserData(userId, scenario, monthsBack = 6) {
   const allIncome = [];
   const budgets = [];
   
-  // Generate data for 2025 only (January to June 2025)
+  // Generate data for the last 6 months from today
   for (let monthOffset = monthsBack - 1; monthOffset >= 0; monthOffset--) {
-    const year = 2025;
-    const month = monthOffset; // 0 = January, 1 = February, etc.
-    const date = new Date(year, month, 1);
+    const date = new Date(now.getFullYear(), now.getMonth() - monthOffset, 1);
+    const year = date.getFullYear();
+    const month = date.getMonth();
     const monthKey = getMonthKey(date);
     
     console.log(`  📅 Generating ${monthKey}...`);
     
-    // Expenses
-    const expenseCount = randomInt(
-      userConfig.expenseCountPerMonth.min,
-      userConfig.expenseCountPerMonth.max
-    );
-    const monthExpenses = generateExpenses(
-      userId, year, month, expenseCount, userConfig.categoryDistribution
-    );
-    allExpenses.push(...monthExpenses);
-    
-    // Income
+    // Income (generate first to know available budget)
     const monthIncome = generateIncome(
       userId, year, month, userConfig.baseSalary,
       userConfig.hasBonus, userConfig.hasFreelance
     );
+    const monthIncomeTotal = monthIncome.reduce((sum, inc) => sum + inc.inc_total, 0);
     allIncome.push(...monthIncome);
+    
+    // Expenses
+    // For high health user, ensure expenses don't exceed 75% of income (leaving room for savings/debt)
+    // For bad health user, allow expenses to potentially exceed income
+    let expenseCount = randomInt(
+      userConfig.expenseCountPerMonth.min,
+      userConfig.expenseCountPerMonth.max
+    );
+    
+    let monthExpenses = generateExpenses(
+      userId, year, month, expenseCount, userConfig.categoryDistribution
+    );
+    
+    // For high health user, ensure total expenses < income
+    if (scenario === "high") {
+      const monthExpensesTotal = monthExpenses.reduce((sum, exp) => sum + exp.exp_total, 0);
+      const maxExpenses = monthIncomeTotal * 0.75; // Max 75% of income for expenses
+      
+      if (monthExpensesTotal > maxExpenses) {
+        // Scale down expenses proportionally to fit within budget
+        // But ensure minimum amounts are maintained (at least 5 for small expenses)
+        const scaleFactor = maxExpenses / monthExpensesTotal;
+        monthExpenses = monthExpenses.map(exp => {
+          const scaledAmount = Math.round(exp.exp_total * scaleFactor * 100) / 100;
+          // Maintain minimum realistic amounts (at least 5 for most categories, 50 for housing/bills)
+          const minAmount = exp.exp_category === "Housing" ? 800 : 
+                           exp.exp_category === "Bills" ? 50 : 5;
+          return {
+            ...exp,
+            exp_total: Math.max(minAmount, scaledAmount)
+          };
+        });
+        
+        // Recalculate total after minimum adjustments
+        const adjustedTotal = monthExpenses.reduce((sum, exp) => sum + exp.exp_total, 0);
+        if (adjustedTotal > maxExpenses) {
+          // Final proportional adjustment if still over budget
+          const finalScale = maxExpenses / adjustedTotal;
+          monthExpenses = monthExpenses.map(exp => ({
+            ...exp,
+            exp_total: Math.max(5, Math.round(exp.exp_total * finalScale * 100) / 100)
+          }));
+        }
+      }
+    }
+    
+    allExpenses.push(...monthExpenses);
     
     // Budget
     // Bad health: Often overspending (budget > income)
-    // High health: Budget should ensure expenses < income (use 70% of income for budget, leaving room)
-    const budgetMultiplier = scenario === "bad" ? 1.15 : scenario === "high" ? 0.70 : 0.85; // Bad: 115%, High: 70% (ensures expenses < income), Good: 85%
+    // High health: Budget should ensure expenses < income (use 65% of income for budget, leaving room for savings)
+    const budgetMultiplier = scenario === "bad" ? 1.15 : scenario === "high" ? 0.65 : 0.85; // Bad: 115%, High: 65% (ensures expenses < income), Good: 85%
     const totalBudget = userConfig.baseSalary * budgetMultiplier;
     const budget = generateBudget(userId, monthKey, totalBudget, scenario);
     budgets.push(budget);
@@ -1081,14 +1172,43 @@ async function generateUserData(userId, scenario, monthsBack = 6) {
     await batch.commit();
   }
   
+  // Calculate totals for verification
+  const totalExpenses = allExpenses.reduce((sum, e) => sum + e.exp_total, 0);
+  const totalIncome = allIncome.reduce((sum, i) => sum + i.inc_total, 0);
+  const foodExpenses = allExpenses.filter(e => e.exp_category === "Food").length;
+  const foodPercentage = allExpenses.length > 0 ? ((foodExpenses / allExpenses.length) * 100).toFixed(1) : 0;
+  
   console.log(`  ✅ Completed! Generated:`);
-  console.log(`     - ${allExpenses.length} expenses`);
+  console.log(`     - ${allExpenses.length} expenses ${allExpenses.length >= 250 ? '✅' : '⚠️'} (minimum 250 required)`);
+  console.log(`     - Total expenses: RM ${totalExpenses.toFixed(2)}`);
   console.log(`     - ${allIncome.length} income records`);
+  console.log(`     - Total income: RM ${totalIncome.toFixed(2)}`);
+  if (scenario === "high") {
+    const incomeVsExpenses = totalIncome > totalExpenses ? '✅ Income > Expenses' : '⚠️ Expenses >= Income';
+    console.log(`     - Income vs Expenses: ${incomeVsExpenses}`);
+  }
+  console.log(`     - Food expenses: ${foodExpenses} (${foodPercentage}% of total)`);
   console.log(`     - ${budgets.length} budget records`);
   console.log(`     - ${savingsGoals.length} savings goals`);
   console.log(`     - ${allContributions.length} savings contributions`);
   console.log(`     - ${badges.length} savings badges`);
   console.log(`     - ${debts.length} debts`);
+  
+  // Debug: Show sample expense and income to verify format
+  if (allExpenses.length > 0) {
+    console.log(`\n  📋 Sample Expense (first one):`);
+    console.log(`     - exp_date: ${allExpenses[0].exp_date}`);
+    console.log(`     - exp_category: ${allExpenses[0].exp_category}`);
+    console.log(`     - exp_total: RM ${allExpenses[0].exp_total}`);
+    console.log(`     - user_id: ${allExpenses[0].user_id}`);
+  }
+  if (allIncome.length > 0) {
+    console.log(`\n  📋 Sample Income (first one):`);
+    console.log(`     - inc_date: ${allIncome[0].inc_date}`);
+    console.log(`     - inc_category: ${allIncome[0].inc_category}`);
+    console.log(`     - inc_total: RM ${allIncome[0].inc_total}`);
+    console.log(`     - user_id: ${allIncome[0].user_id}`);
+  }
 }
 
 // ==================== MAIN EXECUTION ====================
@@ -1104,7 +1224,8 @@ async function main() {
   console.log(`User 1: ${userId1} (BAD/LOW health score)`);
   console.log(`User 2: ${userId2} (GOOD/HIGH health score)`);
   console.log(`Months: 6`);
-  console.log(`Mode: Append (won't delete existing data)\n`);
+  console.log(`Mode: Append (won't delete existing data)`);
+  console.log(`Minimum expenses per user: 250 records (45+ per month)\n`);
   
   try {
     // Generate for user 1 (bad/low health)

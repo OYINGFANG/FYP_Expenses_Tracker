@@ -2297,12 +2297,15 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
             totalSpending: snapshot3Month.totals.totalSpending,
             monthKeys: snapshot3Month.months.map(m => m.monthKey),
           });
-          // If we have a full snapshot, use it for budget data even if we're using 3-month snapshot
-          if (singleResult && singleResult.budgetSummary) {
+          // If we have a full snapshot, use it for budget and debt data even if we're using 3-month snapshot
+          if (singleResult) {
             fallbackSnapshot = singleResult;
-            console.log("✅ Using full snapshot for budget data:", {
+            console.log("✅ Using full snapshot for budget and debt data:", {
               hasBudgetSummary: !!fallbackSnapshot.budgetSummary,
               totalBudget: fallbackSnapshot.budgetSummary?.totalBudget || 0,
+              hasDebtSummary: !!fallbackSnapshot.debtSummary,
+              totalDebt: fallbackSnapshot.debtSummary?.totalDebt || fallbackSnapshot.totalDebt || 0,
+              hasSavingsSummary: !!fallbackSnapshot.savingsSummary,
             });
           }
         } else {
@@ -2385,6 +2388,18 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
       });
     }
     const hasMeaningfulBudget = totalBudget > 0;
+    
+    // Log debt information availability for debugging
+    if (fallbackSnapshot) {
+      console.log("🔍 Debt info check:", {
+        hasDebtSummary: !!fallbackSnapshot.debtSummary,
+        hasTotalDebt: !!fallbackSnapshot.totalDebt,
+        hasMonthlyDebtPayments: !!fallbackSnapshot.monthlyDebtPayments,
+        debtSummaryKeys: fallbackSnapshot.debtSummary ? Object.keys(fallbackSnapshot.debtSummary) : [],
+      });
+    } else {
+      console.warn("⚠️ No fallbackSnapshot available for debt info");
+    }
 
     const snapshotStats = snapshot3Month
       ? {
@@ -2484,6 +2499,52 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
         userContent += `\n`;
       }
       
+      // Add debt and savings information from fallback snapshot if available (3-month snapshot may not include these)
+      if (fallbackSnapshot) {
+        // Add debt information
+        if (fallbackSnapshot.debtSummary) {
+          userContent += `\nDEBT INFORMATION:\n`;
+          userContent += `  - Total Debt: ${fallbackSnapshot.debtSummary.totalDebt} MYR\n`;
+          userContent += `  - Total Monthly Debt Payments: ${fallbackSnapshot.debtSummary.totalMonthlyDebtPayment} MYR\n`;
+          userContent += `  - Number of Debts: ${fallbackSnapshot.debtSummary.debtsCount}\n`;
+          if (fallbackSnapshot.debtSummary.debtToIncomeRatio !== null && fallbackSnapshot.debtSummary.debtToIncomeRatio !== undefined) {
+            userContent += `  - Debt-to-Income Ratio: ${(fallbackSnapshot.debtSummary.debtToIncomeRatio * 100).toFixed(2)}%\n`;
+          }
+          if (fallbackSnapshot.debtHealthScore !== null && fallbackSnapshot.debtHealthScore !== undefined) {
+            userContent += `  - Debt Health Score: ${fallbackSnapshot.debtHealthScore}/100\n`;
+          }
+          userContent += `\n`;
+        } else if (fallbackSnapshot.totalDebt || fallbackSnapshot.monthlyDebtPayments) {
+          // Fallback to direct properties if debtSummary doesn't exist
+          userContent += `\nDEBT INFORMATION:\n`;
+          if (fallbackSnapshot.totalDebt) {
+            userContent += `  - Total Debt: ${fallbackSnapshot.totalDebt} MYR\n`;
+          }
+          if (fallbackSnapshot.monthlyDebtPayments) {
+            userContent += `  - Total Monthly Debt Payments: ${fallbackSnapshot.monthlyDebtPayments} MYR\n`;
+          }
+          userContent += `\n`;
+        }
+        
+        // Add savings information
+        if (fallbackSnapshot.savingsSummary) {
+          userContent += `SAVINGS INFORMATION:\n`;
+          userContent += `  - Monthly Savings Contributions: ${fallbackSnapshot.savingsSummary.savingsContrib} MYR\n`;
+          userContent += `  - Savings Rate: ${(fallbackSnapshot.savingsSummary.savingsRate * 100).toFixed(2)}%\n`;
+          userContent += `  - Number of Savings Goals: ${fallbackSnapshot.savingsSummary.goalsCount}\n`;
+          if (fallbackSnapshot.savingsSummary.totalGoalTarget) {
+            userContent += `  - Total Goal Target: ${fallbackSnapshot.savingsSummary.totalGoalTarget} MYR\n`;
+          }
+          if (fallbackSnapshot.savingsSummary.totalGoalCurrent) {
+            userContent += `  - Total Goal Current: ${fallbackSnapshot.savingsSummary.totalGoalCurrent} MYR\n`;
+          }
+          if (fallbackSnapshot.savingsSummary.emergencyFundMonths !== null && fallbackSnapshot.savingsSummary.emergencyFundMonths !== undefined) {
+            userContent += `  - Emergency Fund Coverage: ${fallbackSnapshot.savingsSummary.emergencyFundMonths} months\n`;
+          }
+          userContent += `\n`;
+        }
+      }
+      
       userContent += `Note: This snapshot includes the last 3 months of financial data for better historical analysis.\n`;
       userContent += `Use this data to identify trends, patterns, and provide informed financial recommendations.\n\n`;
     } else if (fallbackSnapshot) {
@@ -2531,6 +2592,49 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
         }
       }
       
+      // Include debt information if available
+      if (fallbackSnapshot.debtSummary) {
+        userContent += `\nDEBT INFORMATION:\n`;
+        userContent += `  - Total Debt: ${fallbackSnapshot.debtSummary.totalDebt} MYR\n`;
+        userContent += `  - Total Monthly Debt Payments: ${fallbackSnapshot.debtSummary.totalMonthlyDebtPayment} MYR\n`;
+        userContent += `  - Number of Debts: ${fallbackSnapshot.debtSummary.debtsCount}\n`;
+        if (fallbackSnapshot.debtSummary.debtToIncomeRatio !== null && fallbackSnapshot.debtSummary.debtToIncomeRatio !== undefined) {
+          userContent += `  - Debt-to-Income Ratio: ${(fallbackSnapshot.debtSummary.debtToIncomeRatio * 100).toFixed(2)}%\n`;
+        }
+        if (fallbackSnapshot.debtHealthScore !== null && fallbackSnapshot.debtHealthScore !== undefined) {
+          userContent += `  - Debt Health Score: ${fallbackSnapshot.debtHealthScore}/100\n`;
+        }
+        userContent += `\n`;
+      } else if (fallbackSnapshot.totalDebt || fallbackSnapshot.monthlyDebtPayments) {
+        // Fallback to direct properties if debtSummary doesn't exist
+        userContent += `\nDEBT INFORMATION:\n`;
+        if (fallbackSnapshot.totalDebt) {
+          userContent += `  - Total Debt: ${fallbackSnapshot.totalDebt} MYR\n`;
+        }
+        if (fallbackSnapshot.monthlyDebtPayments) {
+          userContent += `  - Total Monthly Debt Payments: ${fallbackSnapshot.monthlyDebtPayments} MYR\n`;
+        }
+        userContent += `\n`;
+      }
+      
+      // Include savings information if available
+      if (fallbackSnapshot.savingsSummary) {
+        userContent += `SAVINGS INFORMATION:\n`;
+        userContent += `  - Monthly Savings Contributions: ${fallbackSnapshot.savingsSummary.savingsContrib} MYR\n`;
+        userContent += `  - Savings Rate: ${(fallbackSnapshot.savingsSummary.savingsRate * 100).toFixed(2)}%\n`;
+        userContent += `  - Number of Savings Goals: ${fallbackSnapshot.savingsSummary.goalsCount}\n`;
+        if (fallbackSnapshot.savingsSummary.totalGoalTarget) {
+          userContent += `  - Total Goal Target: ${fallbackSnapshot.savingsSummary.totalGoalTarget} MYR\n`;
+        }
+        if (fallbackSnapshot.savingsSummary.totalGoalCurrent) {
+          userContent += `  - Total Goal Current: ${fallbackSnapshot.savingsSummary.totalGoalCurrent} MYR\n`;
+        }
+        if (fallbackSnapshot.savingsSummary.emergencyFundMonths !== null && fallbackSnapshot.savingsSummary.emergencyFundMonths !== undefined) {
+          userContent += `  - Emergency Fund Coverage: ${fallbackSnapshot.savingsSummary.emergencyFundMonths} months\n`;
+        }
+        userContent += `\n`;
+      }
+      
       userContent += `\nNote: This is current month data only. Historical trend analysis is not available.\n\n`;
     } else {
       // Even if snapshots failed, try to provide basic guidance
@@ -2557,10 +2661,21 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
     userContent += `4. INCOME ANALYSIS: Reference both current month and 3-month averages when discussing earnings.\n`;
     userContent += `   - Use average monthly income for loan affordability calculations\n`;
     userContent += `   - Note if income is stable, increasing, or decreasing over the 3 months\n`;
-    userContent += `5. ACTIONABLE INSIGHTS: Provide specific, actionable recommendations based on the actual data shown.\n`;
-    userContent += `6. DATA LIMITATIONS: If data is missing or limited, acknowledge this clearly and provide general guidance.\n`;
-    userContent += `7. RESPONSE FORMAT: Keep responses clear, concise, and focused. Provide 2-3 key insights with actionable recommendations.\n`;
-    userContent += `8. TONE: Be helpful, supportive, and direct. Use the actual numbers from the data to build credibility.\n`;
+    userContent += `5. DEBT ANALYSIS: If debt information is provided, use it in your analysis:\n`;
+    userContent += `   - Reference the total debt amount and monthly debt payments when discussing financial obligations\n`;
+    userContent += `   - Use the debt-to-income ratio to assess debt burden (lower is better, typically <36% is healthy)\n`;
+    userContent += `   - Consider existing debt obligations when advising on new loans or financial decisions\n`;
+    userContent += `   - Use the debt health score to provide context on overall debt situation\n`;
+    userContent += `   - When answering debt-related questions, provide specific numbers from the DEBT INFORMATION section\n`;
+    userContent += `6. SAVINGS ANALYSIS: If savings information is provided, use it in your analysis:\n`;
+    userContent += `   - Reference savings contributions, savings rate, and savings goals when discussing financial health\n`;
+    userContent += `   - Use emergency fund coverage (months) to assess financial preparedness\n`;
+    userContent += `   - Consider available savings when advising on large purchases or loans\n`;
+    userContent += `   - When answering savings-related questions, provide specific numbers from the SAVINGS INFORMATION section\n`;
+    userContent += `7. ACTIONABLE INSIGHTS: Provide specific, actionable recommendations based on the actual data shown.\n`;
+    userContent += `7. DATA LIMITATIONS: If data is missing or limited, acknowledge this clearly and provide general guidance.\n`;
+    userContent += `8. RESPONSE FORMAT: Keep responses clear, concise, and focused. Provide 2-3 key insights with actionable recommendations.\n`;
+    userContent += `9. TONE: Be helpful, supportive, and direct. Use the actual numbers from the data to build credibility.\n`;
 
     const lower = message.toLowerCase();
     const asksNewLoan =
@@ -2577,19 +2692,57 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
 
     if (asksNewLoan) {
       userContent +=
-        "\n\nThe user is asking about taking a NEW loan. Use the 3-month financial data to assess their readiness:\n" +
+        "\n\nThe user is asking about taking a NEW loan. Use the 3-month financial data AND existing debt information to assess their readiness:\n" +
+        "- EXISTING DEBT: Reference the debt information provided above (total debt, monthly payments, debt-to-income ratio).\n" +
+        "- NEW LOAN IMPACT: Consider how the new loan payment would affect their existing debt-to-income ratio.\n" +
         "- Calculate debt-to-income ratio using AVERAGE monthly income (not just current month) for more reliable assessment.\n" +
+        "- Total debt burden: Add the new loan's monthly payment to existing monthly debt payments and compare to income.\n" +
         "- Analyze spending trends: Is spending consistent, increasing, or decreasing over the 3 months?\n" +
         "- Assess cash flow stability: Is net cash flow positive consistently across all 3 months?\n" +
         "- Look at spending patterns: Are there any concerning trends (e.g., spending increasing faster than income)?\n" +
-        "- Calculate affordability: Can they afford the new loan payment based on their average monthly net cash flow?\n" +
+        "- Calculate affordability: Can they afford the new loan payment based on their average monthly net cash flow, considering existing debt payments?\n" +
         "- Consider financial stability: Have they maintained positive cash flow for at least 2-3 months?\n" +
-        "- Explain why taking a new loan looks manageable or risky based on these 3-month trends.\n" +
-        "- Suggest improvements before taking a loan (e.g., reduce spending, build emergency fund, stabilize income).\n" +
+        "- Explain why taking a new loan looks manageable or risky based on these 3-month trends and existing debt obligations.\n" +
+        "- Suggest improvements before taking a loan (e.g., reduce spending, pay down existing debt, build emergency fund, stabilize income).\n" +
         "- Do NOT give guarantees; this is not formal financial advice.\n" +
         "- IMPORTANT: Use the 3-month averages and trends, not just the current month, for a more accurate assessment.\n";
     }
 
+    // Check if user is asking about their existing debt (but not about new loans)
+    const asksAboutDebt = !asksNewLoan && (
+      lower.includes("tell me about my debt") ||
+      lower.includes("my debt") ||
+      (lower.includes("debt") && (lower.includes("how much") || lower.includes("what is") || lower.includes("what's"))) ||
+      lower.includes("debt information") ||
+      lower.includes("debt status") ||
+      lower.includes("debt situation") ||
+      lower.includes("current debt") ||
+      lower.includes("existing debt")
+    );
+    
+    if (asksAboutDebt) {
+      userContent +=
+        "\n\nThe user is asking about their EXISTING DEBT. Use the debt information provided above to answer:\n" +
+        "- Reference the specific debt numbers from the DEBT INFORMATION section (total debt, monthly payments, debt-to-income ratio, debt health score).\n" +
+        "- Provide clear, specific information about their current debt situation using the actual numbers.\n" +
+        "- Explain what the debt-to-income ratio means and whether it's healthy (typically <36% is considered healthy).\n" +
+        "- Use the debt health score to provide context on their overall debt situation.\n" +
+        "- If debt information is provided, DO NOT say there is no debt information - use the numbers provided.\n" +
+        "- Provide actionable advice on debt management if appropriate.\n";
+    }
+
+    // Debug: Log if debt/savings info is in userContent
+    const hasDebtInfo = userContent.includes("DEBT INFORMATION:");
+    const hasSavingsInfo = userContent.includes("SAVINGS INFORMATION:");
+    console.log("🔍 Chat prompt check:", {
+      hasDebtInfo,
+      hasSavingsInfo,
+      userContentLength: userContent.length,
+      includesFinancialData: userContent.includes("FINANCIAL DATA"),
+      snapshot3MonthAvailable: !!snapshot3Month,
+      fallbackSnapshotAvailable: !!fallbackSnapshot,
+    });
+    
     // First API call with tools (with timeout to prevent hanging)
     let response;
     try {

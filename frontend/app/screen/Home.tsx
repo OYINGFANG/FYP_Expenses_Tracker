@@ -220,6 +220,7 @@ export default function Home() {
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [categoryBreakdown, setCategoryBreakdown] = useState<Record<string, number>>({});
   const [isScanningReceipt, setIsScanningReceipt] = useState(false);
+  const [insightsTimestamp, setInsightsTimestamp] = useState<Date | null>(null);
 
   // 🔁 NEW: overall budget progress (current month)
   const [budgetTotal, setBudgetTotal] = useState(0);
@@ -411,6 +412,9 @@ useEffect(() => {
 
 // Cache key for notification count
 const NOTIFICATION_CACHE_KEY = 'cached_notification_count';
+// Cache key for AI insights
+const AI_INSIGHTS_CACHE_KEY = 'cached_ai_insights';
+const AI_INSIGHTS_TIMESTAMP_KEY = 'cached_ai_insights_timestamp';
 
 // Load cached notification count immediately for instant display
 useEffect(() => {
@@ -603,8 +607,72 @@ const debtHealth = useMemo(() => {
   // Debounce helper for AI analysis
   const analysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
+  // Load cached AI insights on mount
+  useEffect(() => {
+    const loadCachedInsights = async () => {
+      try {
+        const cached = await AsyncStorage.getItem(AI_INSIGHTS_CACHE_KEY);
+        const timestamp = await AsyncStorage.getItem(AI_INSIGHTS_TIMESTAMP_KEY);
+        
+        if (cached && timestamp) {
+          const cachedData = JSON.parse(cached);
+          const cacheTime = new Date(timestamp);
+          const now = new Date();
+          
+          // Check if cache is from today (same day)
+          const isToday = cacheTime.toDateString() === now.toDateString();
+          
+          if (isToday && cachedData) {
+            setBehaviourReport(cachedData);
+            setInsightsTimestamp(cacheTime);
+            console.log("📊 Loaded cached AI insights from", cacheTime.toLocaleString());
+            return true; // Cache found and valid
+          } else {
+            // Cache is from a different day, clear it
+            await AsyncStorage.removeItem(AI_INSIGHTS_CACHE_KEY);
+            await AsyncStorage.removeItem(AI_INSIGHTS_TIMESTAMP_KEY);
+          }
+        }
+      } catch (error) {
+        console.error("Error loading cached insights:", error);
+      }
+      return false; // No valid cache
+    };
+    
+    loadCachedInsights();
+  }, []);
+  
+  // Save insights to cache
+  const saveInsightsToCache = async (report: typeof behaviourReport) => {
+    try {
+      if (report && report.insights && report.insights.length > 0) {
+        const now = new Date();
+        await AsyncStorage.setItem(AI_INSIGHTS_CACHE_KEY, JSON.stringify(report));
+        await AsyncStorage.setItem(AI_INSIGHTS_TIMESTAMP_KEY, now.toISOString());
+        setInsightsTimestamp(now);
+        console.log("💾 Saved AI insights to cache");
+      }
+    } catch (error) {
+      console.error("Error saving insights to cache:", error);
+    }
+  };
+  
+  // Manual refresh function
+  const handleRefreshInsights = async () => {
+    // Clear cache and force refresh
+    try {
+      await AsyncStorage.removeItem(AI_INSIGHTS_CACHE_KEY);
+      await AsyncStorage.removeItem(AI_INSIGHTS_TIMESTAMP_KEY);
+      setInsightsTimestamp(null);
+      // Trigger analysis
+      runBehaviorAnalysis(true);
+    } catch (error) {
+      console.error("Error clearing cache:", error);
+    }
+  };
+  
   // Run AI-powered behavior analysis when data changes (debounced)
-  const runBehaviorAnalysis = async () => {
+  const runBehaviorAnalysis = async (forceRefresh = false) => {
     // Calculate month expenses outside try-catch so it's available in error handler
     const monthKey = getCurrentMonthKey();
     const { startISO, endISO } = getMonthDateRange(monthKey);
@@ -764,14 +832,17 @@ const debtHealth = useMemo(() => {
             ? (currentMonthTotal - prevMonthTotal) / prevMonthTotal
             : undefined;
 
-        setBehaviourReport({
+        const newReport = {
           insights: result.insights || [],
           summary: result.summary || {},
           totals: {
             monthTotal: result.metrics?.totalExpenses || currentMonthTotal,
             trendMoM,
           },
-        });
+        };
+        setBehaviourReport(newReport);
+        // Save to cache (this will also set the timestamp)
+        await saveInsightsToCache(newReport);
       } else {
         throw new Error(result.error || "Analysis failed");
       }
@@ -852,24 +923,47 @@ const debtHealth = useMemo(() => {
   };
 
   useEffect(() => {
-    // Debounce AI analysis to prevent excessive API calls
-    // Clear any existing timeout
-    if (analysisTimeoutRef.current) {
-      clearTimeout(analysisTimeoutRef.current);
-    }
+    // Check if we have cached insights first
+    const checkAndRunAnalysis = async () => {
+      try {
+        const cached = await AsyncStorage.getItem(AI_INSIGHTS_CACHE_KEY);
+        const timestamp = await AsyncStorage.getItem(AI_INSIGHTS_TIMESTAMP_KEY);
+        
+        if (cached && timestamp) {
+          const cacheTime = new Date(timestamp);
+          const now = new Date();
+          const isToday = cacheTime.toDateString() === now.toDateString();
+          
+          if (isToday) {
+            // We have valid cached insights, don't run analysis
+            console.log("📊 Using cached AI insights, skipping analysis");
+            return;
+          }
+        }
+        
+        // No valid cache, proceed with analysis
+        // Debounce AI analysis to prevent excessive API calls
+        if (analysisTimeoutRef.current) {
+          clearTimeout(analysisTimeoutRef.current);
+        }
 
-    // Run analysis when expenses, income, debts, or budget changes
-    // But wait 3 seconds after the last change to batch updates
-    // Always try to run - backend will handle large datasets with fallback
-    if (expenseRecords.length > 0 || incomeRecords.length > 0 || debts.length > 0) {
-      analysisTimeoutRef.current = setTimeout(() => {
-        // Run in background, don't block UI
-        runBehaviorAnalysis().catch((err) => {
-          // Error already handled in runBehaviorAnalysis - silently fail
-          // Don't log as it's expected with large datasets
-        });
-      }, 3000); // Increased debounce time to 3 seconds
-    }
+        // Run analysis when expenses, income, debts, or budget changes
+        // But wait 3 seconds after the last change to batch updates
+        if (expenseRecords.length > 0 || incomeRecords.length > 0 || debts.length > 0) {
+          analysisTimeoutRef.current = setTimeout(() => {
+            // Run in background, don't block UI
+            runBehaviorAnalysis(false).catch((err) => {
+              // Error already handled in runBehaviorAnalysis - silently fail
+              // Don't log as it's expected with large datasets
+            });
+          }, 3000); // Increased debounce time to 3 seconds
+        }
+      } catch (error) {
+        console.error("Error checking cache:", error);
+      }
+    };
+
+    checkAndRunAnalysis();
 
     // Cleanup timeout on unmount or dependency change
     return () => {
@@ -1435,9 +1529,25 @@ const debtHealth = useMemo(() => {
             <View style={styles.insightsIconWrapper}>
               <Ionicons name="sparkles" size={18} color="#F59E0B" />
             </View>
-            <Text style={styles.sectionTitle}>AI Insights</Text>
+            <View style={styles.sectionTitleContainer}>
+              <Text style={styles.sectionTitle}>AI Insights</Text>
+              {insightsTimestamp && !isLoadingAnalysis && (
+                <Text style={styles.timestampText}>
+                  Updated at {insightsTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              )}
+            </View>
             {isLoadingAnalysis && (
               <Text style={styles.loadingText}>Analyzing...</Text>
+            )}
+            {!isLoadingAnalysis && (
+              <TouchableOpacity
+                onPress={handleRefreshInsights}
+                style={styles.refreshButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="refresh" size={18} color="#1E3932" />
+              </TouchableOpacity>
             )}
           </View>
 
@@ -1557,7 +1667,9 @@ const styles = StyleSheet.create({
   actionText: { color: "#1E3932", fontWeight: "500", marginTop: 5, fontSize: 13 },
   insightsContainer: { paddingHorizontal: 20, marginTop: 20 },
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
+  sectionTitleContainer: { flex: 1 },
   sectionTitle: { fontWeight: "700", fontSize: 18, color: "#1E3932" },
+  timestampText: { fontSize: 11, color: "#6b7280", marginTop: 2 },
   breakdownContainer: { paddingHorizontal: 20, marginTop: 25 },
   breakdownHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   breakdownSubtitle: { fontSize: 12, color: "#6b7280" },
@@ -1736,6 +1848,14 @@ logoutFab: {
     height: 34,
     borderRadius: 10,
     backgroundColor: "#FEF3C7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  refreshButton: {
+    marginLeft: "auto",
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: "#F0F0F0",
     alignItems: "center",
     justifyContent: "center",
   },
