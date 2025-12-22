@@ -22,10 +22,11 @@ import { CHAT_SERVER_URL } from "../services/api";
 import { subscribeUserExpenseRecords, ExpenseRecord } from "../utils/ExpensesUtils";
 import { getUserBudget, getCurrentMonthKey, getBudgetProgress, getMonthDateRange } from "../utils/budgetUtils";
 import { subscribeUserIncomeRecords, type IncomeRecord } from "../utils/IncomeUtils";
-import { subscribeUserDebts } from "../utils/DebtUtils";
+import { subscribeUserDebts, type Debt, type Payment } from "../utils/DebtUtils";
 import { getNotifications, subscribeToNotifications } from "../utils/notificationStore";
 import { useFocusEffect } from "expo-router";
 import { checkAndCreateBudgetNotifications } from "../utils/budgetNotificationUtils";
+import { checkAndNotifyUnpaidDebts } from "../utils/debtNotificationUtils";
 import { subscribeUserCurrency, formatCurrency, getCurrencySymbol, type Currency } from "../utils/currencyUtils";
 import { checkOnboardingStatus } from "../utils/onboardingUtils";
 import { useOnboarding } from "../context/OnboardingContext";
@@ -355,22 +356,6 @@ export default function Home() {
 
   // ============ Debt health helpers ============
 
-type Payment = {
-  id: string;
-  amount: number;
-  dateISO: string;
-  note?: string;
-};
-
-type Debt = {
-  id: string;
-  name?: string;
-  originalAmount: number;
-  currentBalance: number;
-  monthlyPayment: number;
-  payments: Payment[];
-};
-
 const clamp = (n: number, min = 0, max = 100) =>
   Math.max(min, Math.min(max, n));
 
@@ -473,7 +458,13 @@ useEffect(() => {
 
   const unsub = subscribeUserDebts(
     userId,
-    (rows) => setDebts(rows as Debt[]),
+    (rows) => {
+      setDebts(rows as Debt[]);
+      // Check for unpaid debts and send notifications (runs on 15th or later)
+      checkAndNotifyUnpaidDebts(rows as Debt[], userId).catch((err) => {
+        console.error("Error checking unpaid debts:", err);
+      });
+    },
     (err) => console.error("Home subscribeUserDebts error:", err)
   );
 
@@ -1351,8 +1342,8 @@ const debtHealth = useMemo(() => {
                   ? debtHealth.healthScore >= 80
                     ? "Excellent"
                     : debtHealth.healthScore >= 60
-                    ? "Good standing"
-                        : "Need attention"
+                    ? "Need attention"
+                        : "High risk "
                   : "Add your debts to see score"}
               </Text>
                 </View>

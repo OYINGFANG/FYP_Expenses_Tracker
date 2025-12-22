@@ -259,6 +259,51 @@ export async function addSavingsContribution(
 }
 
 /**
+ * Subscribe to contributions for a specific savings goal.
+ * Maps Firestore docs to SavingsContribution with JS Date.
+ */
+export function subscribeGoalContributions(
+  goalId: string,
+  callback: (contributions: SavingsContribution[]) => void
+): () => void {
+  const goalRef = doc(db, "SAVINGS_GOALS", goalId);
+  const contributionsCol = collection(goalRef, "CONTRIBUTIONS");
+
+  const unsub = onSnapshot(
+    contributionsCol,
+    (snap) => {
+      const contributions: SavingsContribution[] = snap.docs.map((d) => {
+        const x = d.data() as any;
+
+        const dateValue =
+          x.date?.toDate?.() ||
+          (x.date ? new Date(x.date) : new Date(x.created_at?.toDate?.() || Date.now()));
+
+        return {
+          id: d.id,
+          goalId,
+          amount: Number(x.amount) || 0,
+          date: dateValue,
+          source: x.source || undefined,
+          note: x.note || undefined,
+        };
+      });
+
+      // Sort by date descending (most recent first)
+      contributions.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+      callback(contributions);
+    },
+    (e) => {
+      console.error("subscribeGoalContributions error:", e);
+      callback([]);
+    }
+  );
+
+  return unsub;
+}
+
+/**
  * Delete a savings goal and all its contributions.
  * Uses a batched write to delete all subcollection docs first.
  */

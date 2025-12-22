@@ -274,7 +274,6 @@ export default function OTPVerification() {
             ) : (
               <>
                 <Text style={styles.verifyButtonText}>Verify</Text>
-                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
               </>
             )}
           </TouchableOpacity>

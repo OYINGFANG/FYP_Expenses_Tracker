@@ -48,6 +48,7 @@ const formatNotificationDate = (iso: string) => {
 const getNotificationIcon = (type: AppNotification["type"]) => {
   switch (type) {
     case "debtReminder":
+    case "debtUnpaidReminder":
       return "card-outline";
     case "savingsReminder":
       return "wallet-outline";
@@ -63,6 +64,7 @@ const getNotificationIcon = (type: AppNotification["type"]) => {
 const getNotificationColor = (type: AppNotification["type"]) => {
   switch (type) {
     case "debtReminder":
+    case "debtUnpaidReminder":
       return RED;
     case "savingsReminder":
       return "#059669";
@@ -286,7 +288,16 @@ export default function Notifications() {
     if (statusFilter === "read" && !notif.read) return false;
 
     // Type filter
-    if (typeFilter !== "all" && notif.type !== typeFilter) return false;
+    if (typeFilter !== "all") {
+      if (typeFilter === "debtReminder") {
+        // Include both debtReminder and debtUnpaidReminder when filtering by debt
+        if (notif.type !== "debtReminder" && notif.type !== "debtUnpaidReminder") {
+          return false;
+        }
+      } else if (notif.type !== typeFilter) {
+        return false;
+      }
+    }
 
     return true;
   });

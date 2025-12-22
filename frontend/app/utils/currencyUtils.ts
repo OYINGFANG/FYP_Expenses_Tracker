@@ -44,13 +44,15 @@ export const formatCurrency = (
     showSymbol = true,
   } = options || {};
 
+  const isNegative = amount < 0;
   const formatted = Math.abs(amount).toLocaleString("en-US", {
     minimumFractionDigits,
     maximumFractionDigits,
   });
 
   const symbol = showSymbol ? getCurrencySymbol(currency) : "";
-  return symbol ? `${symbol} ${formatted}` : formatted;
+  const sign = isNegative ? "-" : "";
+  return symbol ? `${sign}${symbol} ${formatted}` : `${sign}${formatted}`;
 };
 
 /**

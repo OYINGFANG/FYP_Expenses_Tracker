@@ -19,7 +19,7 @@ const NOTIFICATIONS_COLLECTION = "NOTIFICATIONS";
 
 export type AppNotification = {
   id: string; 
-  type: "debtReminder" | "savingsReminder" | "budgetReminder" | "badgeAchievement";
+  type: "debtReminder" | "debtUnpaidReminder" | "savingsReminder" | "budgetReminder" | "badgeAchievement";
   header?: string;
   title: string;
   body: string;

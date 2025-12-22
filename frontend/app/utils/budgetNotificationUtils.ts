@@ -2,7 +2,7 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AppNotification, addNotification, getNotifications } from "./notificationStore";
+import { AppNotification, addNotification } from "./notificationStore";
 import { getBudgetProgress, getCurrentMonthKey } from "./budgetUtils";
 
 const BUDGET_NOTIFICATION_PREFIX = "budgetNotification:";
@@ -41,12 +41,27 @@ export async function checkAndCreateBudgetNotifications(
   userId: string,
   monthKey?: string
 ): Promise<void> {
+  const currentMonthKey = monthKey || getCurrentMonthKey();
+  
+  // Use a processing lock to prevent concurrent execution
+  const processingLockKey = `${BUDGET_NOTIFICATION_PREFIX}${currentMonthKey}:processing`;
+  const isProcessing = await AsyncStorage.getItem(processingLockKey);
+  
+  if (isProcessing) {
+    // Another call is already processing, skip this one
+    console.log("Budget notification check already in progress, skipping duplicate call");
+    return;
+  }
+
   try {
-    const currentMonthKey = monthKey || getCurrentMonthKey();
+    // Set processing lock IMMEDIATELY to prevent race conditions
+    await AsyncStorage.setItem(processingLockKey, "true");
+    
     const progress = await getBudgetProgress(currentMonthKey);
 
     if (!progress || progress.totalBudget <= 0) {
-      return; // No budget set, no notifications needed
+      // No budget set, no notifications needed - but lock will be cleared in finally
+      return;
     }
 
     const utilizationPct = progress.utilizationPct / 100; // Convert to 0-1 range
@@ -61,14 +76,15 @@ export async function checkAndCreateBudgetNotifications(
     if (utilizationPct >= BUDGET_EXCEEDED_THRESHOLD) {
       // Budget exceeded - create notification if not already exists
       if (!existingNotificationId) {
-        await createBudgetExceededNotification(totalSpent, totalBudget, remaining, currentMonthKey);
-        // Store a marker to prevent duplicates
+        // Set marker IMMEDIATELY to prevent race conditions from concurrent calls
         await AsyncStorage.setItem(storageKey, "exceeded");
+        await createBudgetExceededNotification(totalSpent, totalBudget, remaining, currentMonthKey);
       }
     } else if (utilizationPct >= BUDGET_WARNING_THRESHOLD && !existingNotificationId) {
       // Budget warning (80% used) - create notification if not already exists
-      await createBudgetWarningNotification(totalSpent, totalBudget, remaining, currentMonthKey);
+      // Set marker IMMEDIATELY to prevent race conditions from concurrent calls
       await AsyncStorage.setItem(storageKey, "warning");
+      await createBudgetWarningNotification(totalSpent, totalBudget, remaining, currentMonthKey);
     } else if (utilizationPct < BUDGET_WARNING_THRESHOLD && existingNotificationId) {
       // Budget usage dropped below warning threshold, clear the marker
       await AsyncStorage.removeItem(storageKey);
@@ -81,13 +97,14 @@ export async function checkAndCreateBudgetNotifications(
         const catExisting = await AsyncStorage.getItem(catStorageKey);
         
         if (!catExisting) {
+          // Set marker IMMEDIATELY to prevent race conditions from concurrent calls
+          await AsyncStorage.setItem(catStorageKey, "exceeded");
           await createCategoryBudgetExceededNotification(
             category,
             catProgress.spent,
             catProgress.allocated,
             currentMonthKey
           );
-          await AsyncStorage.setItem(catStorageKey, "exceeded");
         }
       } else if (catProgress.allocated > 0 && catProgress.ratio < 1.0) {
         // Category is no longer exceeded, clear the marker
@@ -97,6 +114,9 @@ export async function checkAndCreateBudgetNotifications(
     }
   } catch (error) {
     console.error("Error checking budget notifications:", error);
+  } finally {
+    // Always clear the processing lock when done
+    await AsyncStorage.removeItem(processingLockKey);
   }
 }
 
@@ -118,33 +138,33 @@ async function createBudgetExceededNotification(
   const title = "Budget Exceeded!";
   const body = `You've spent ${fmtRM(totalSpent)} of ${fmtRM(totalBudget)}. Over by ${fmtRM(Math.abs(remaining))}.`;
 
-  // Use stable ID to prevent duplicates
+  // Use stable ID to prevent duplicates - addNotification will handle duplicate checking
   const notificationId = `budget-exceeded-${monthKey}`;
   
   // Get userId for user-specific notifications
   const userId = await AsyncStorage.getItem("userId");
   
-  // Check if notification already exists
-  const existing = await getNotifications(userId);
-  const alreadyExists = existing.some(n => n.id === notificationId);
-  
-  if (alreadyExists) {
-    // Update existing notification instead of creating duplicate
-    const existingNotif = existing.find(n => n.id === notificationId);
-    if (existingNotif) {
-      const updated: AppNotification = {
-        ...existingNotif,
-        title,
-        body,
-        createdAt: new Date().toISOString(),
-        read: false,
-      };
-      await addNotification(updated, userId);
-    }
-    return; // Don't create duplicate push notification either
+  if (!userId) {
+    console.warn("No userId available for budget notification");
+    return;
   }
 
-  // Schedule immediate push notification
+  // Create the AppNotification entry - addNotification will check for duplicates and update if exists
+  const appNotification: AppNotification = {
+    id: notificationId,
+    type: "budgetReminder",
+    header,
+    title,
+    body,
+    createdAt: new Date().toISOString(),
+    read: false,
+    monthKey,
+  };
+
+  // addNotification will handle duplicate checking and updating
+  await addNotification(appNotification, userId);
+
+  // Schedule immediate push notification only if permission granted
   if (hasPermission) {
     try {
       await Notifications.scheduleNotificationAsync({
@@ -163,20 +183,6 @@ async function createBudgetExceededNotification(
       console.error("Error scheduling budget exceeded notification:", error);
     }
   }
-
-  // Also create an AppNotification entry for the Notification Center
-  const appNotification: AppNotification = {
-    id: notificationId,
-    type: "budgetReminder",
-    header,
-    title,
-    body,
-    createdAt: new Date().toISOString(),
-    read: false,
-    monthKey,
-  };
-
-  await addNotification(appNotification, userId);
 }
 
 /**
@@ -197,33 +203,33 @@ async function createBudgetWarningNotification(
   const title = "Budget Warning";
   const body = `You've used 80% of your budget. ${fmtRM(remaining)} remaining out of ${fmtRM(totalBudget)}.`;
 
-  // Use stable ID to prevent duplicates
+  // Use stable ID to prevent duplicates - addNotification will handle duplicate checking
   const notificationId = `budget-warning-${monthKey}`;
   
   // Get userId for user-specific notifications
   const userId = await AsyncStorage.getItem("userId");
   
-  // Check if notification already exists
-  const existing = await getNotifications(userId);
-  const alreadyExists = existing.some(n => n.id === notificationId);
-  
-  if (alreadyExists) {
-    // Update existing notification instead of creating duplicate
-    const existingNotif = existing.find(n => n.id === notificationId);
-    if (existingNotif) {
-      const updated: AppNotification = {
-        ...existingNotif,
-        title,
-        body,
-        createdAt: new Date().toISOString(),
-        read: false,
-      };
-      await addNotification(updated, userId);
-    }
-    return; // Don't create duplicate push notification either
+  if (!userId) {
+    console.warn("No userId available for budget notification");
+    return;
   }
 
-  // Schedule immediate push notification
+  // Create the AppNotification entry - addNotification will check for duplicates and update if exists
+  const appNotification: AppNotification = {
+    id: notificationId,
+    type: "budgetReminder",
+    header,
+    title,
+    body,
+    createdAt: new Date().toISOString(),
+    read: false,
+    monthKey,
+  };
+
+  // addNotification will handle duplicate checking and updating
+  await addNotification(appNotification, userId);
+
+  // Schedule immediate push notification only if permission granted
   if (hasPermission) {
     try {
       await Notifications.scheduleNotificationAsync({
@@ -242,20 +248,6 @@ async function createBudgetWarningNotification(
       console.error("Error scheduling budget warning notification:", error);
     }
   }
-
-  // Also create an AppNotification entry for the Notification Center
-  const appNotification: AppNotification = {
-    id: notificationId,
-    type: "budgetReminder",
-    header,
-    title,
-    body,
-    createdAt: new Date().toISOString(),
-    read: false,
-    monthKey,
-  };
-
-  await addNotification(appNotification, userId);
 }
 
 /**
@@ -276,33 +268,36 @@ async function createCategoryBudgetExceededNotification(
   const title = `${category} Budget Exceeded`;
   const body = `You've spent ${fmtRM(spent)} on ${category}, exceeding your budget of ${fmtRM(allocated)}.`;
 
-  // Use stable ID to prevent duplicates
-  const notificationId = `budget-category-${category}-${monthKey}`;
+  // Use stable ID to prevent duplicates - addNotification will handle duplicate checking
+  // Sanitize category name for use in ID (replace spaces and special chars)
+  const sanitizedCategory = category.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+  const notificationId = `budget-category-${sanitizedCategory}-${monthKey}`;
   
   // Get userId for user-specific notifications
   const userId = await AsyncStorage.getItem("userId");
   
-  // Check if notification already exists
-  const existing = await getNotifications(userId);
-  const alreadyExists = existing.some(n => n.id === notificationId);
-  
-  if (alreadyExists) {
-    // Update existing notification instead of creating duplicate
-    const existingNotif = existing.find(n => n.id === notificationId);
-    if (existingNotif) {
-      const updated: AppNotification = {
-        ...existingNotif,
-        title,
-        body,
-        createdAt: new Date().toISOString(),
-        read: false,
-      };
-      await addNotification(updated, userId);
-    }
-    return; // Don't create duplicate push notification either
+  if (!userId) {
+    console.warn("No userId available for budget notification");
+    return;
   }
 
-  // Schedule immediate push notification
+  // Create the AppNotification entry - addNotification will check for duplicates and update if exists
+  const appNotification: AppNotification = {
+    id: notificationId,
+    type: "budgetReminder",
+    header,
+    title,
+    body,
+    createdAt: new Date().toISOString(),
+    read: false,
+    monthKey,
+    category,
+  };
+
+  // addNotification will handle duplicate checking and updating
+  await addNotification(appNotification, userId);
+
+  // Schedule immediate push notification only if permission granted
   if (hasPermission) {
     try {
       await Notifications.scheduleNotificationAsync({
@@ -322,21 +317,6 @@ async function createCategoryBudgetExceededNotification(
       console.error("Error scheduling category budget notification:", error);
     }
   }
-
-  // Also create an AppNotification entry for the Notification Center
-  const appNotification: AppNotification = {
-    id: notificationId,
-    type: "budgetReminder",
-    header,
-    title,
-    body,
-    createdAt: new Date().toISOString(),
-    read: false,
-    monthKey,
-    category,
-  };
-
-  await addNotification(appNotification, userId);
 }
 
 /**

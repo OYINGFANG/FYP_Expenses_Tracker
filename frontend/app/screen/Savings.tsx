@@ -23,6 +23,7 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import {
   subscribeUserSavingsGoals,
   subscribeUserSavingsBadges,
+  subscribeGoalContributions,
   upsertSavingsGoal,
   addSavingsContribution,
   deleteSavingsGoalDeep,
@@ -81,12 +82,14 @@ function GoalRow({
   onDelete,
   onAddContribution,
   currency,
+  contributions,
 }: {
   goal: SavingsGoal;
   onEdit: () => void;
   onDelete: () => void;
   onAddContribution: () => void;
   currency: Currency;
+  contributions: SavingsContribution[];
 }) {
   const progress = goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0;
   const isCompleted = progress >= 100;
@@ -187,6 +190,23 @@ function GoalRow({
           ) : null}
         </View>
         )
+      )}
+
+      {/* Recent Contributions */}
+      {contributions.length > 0 && (
+        <View style={styles.contributionsSection}>
+          <Text style={styles.contributionsTitle}>Recent Contributions</Text>
+          {contributions.slice(0, 3).map((c) => (
+            <View key={c.id} style={styles.contributionRow}>
+              <Ionicons name="checkmark-circle" size={14} color={BRAND_GREEN} />
+              <Text style={styles.contributionDate}>{formatDate(c.date)}</Text>
+              <Text style={styles.contributionAmount}>{formatCurrency(c.amount, currency)}</Text>
+            </View>
+          ))}
+          {contributions.length > 3 && (
+            <Text style={styles.contributionsMore}>+{contributions.length - 3} more</Text>
+          )}
+        </View>
       )}
 
       {/* Add Contribution Button */}
@@ -855,6 +875,7 @@ export default function Savings() {
   const [badges, setBadges] = useState<SavingsBadge[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [currency, setCurrency] = useState<Currency>("MYR");
+  const [contributionsMap, setContributionsMap] = useState<Record<string, SavingsContribution[]>>({});
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<SavingsGoal | null>(null);
@@ -941,6 +962,30 @@ export default function Savings() {
       unsubBadges?.();
     };
   }, [userId]);
+
+  // Subscribe to contributions for each goal
+  useEffect(() => {
+    if (goals.length === 0) {
+      setContributionsMap({});
+      return;
+    }
+
+    const unsubscribers: (() => void)[] = [];
+
+    goals.forEach((goal) => {
+      const unsub = subscribeGoalContributions(goal.id, (contribs) => {
+        setContributionsMap((prev) => ({
+          ...prev,
+          [goal.id]: contribs,
+        }));
+      });
+      unsubscribers.push(unsub);
+    });
+
+    return () => {
+      unsubscribers.forEach((unsub) => unsub());
+    };
+  }, [goals]);
 
   // Derived stats
   const stats = useMemo(() => {
@@ -1291,6 +1336,7 @@ export default function Savings() {
                 onDelete={() => deleteGoal(goal.id)}
                 onAddContribution={() => openContributionModal(goal)}
                 currency={currency}
+                contributions={contributionsMap[goal.id] || []}
               />
             ))
           )}
@@ -1318,6 +1364,7 @@ export default function Savings() {
                   onDelete={() => deleteGoal(goal.id)}
                   onAddContribution={() => {}} // No-op since button is hidden for completed goals
                   currency={currency}
+                  contributions={contributionsMap[goal.id] || []}
                 />
               ))}
           </View>
@@ -1734,6 +1781,44 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "900",
     fontSize: 13,
+  },
+
+  contributionsSection: {
+    backgroundColor: BRAND_GREEN + "11",
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+  },
+  contributionsTitle: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: BRAND_DARK,
+    marginBottom: 6,
+    textTransform: "uppercase",
+  },
+  contributionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  contributionDate: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    color: MUTED,
+  },
+  contributionAmount: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: BRAND_GREEN,
+  },
+  contributionsMore: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: MUTED,
+    marginTop: 4,
+    textAlign: "center",
   },
 
   empty: {
