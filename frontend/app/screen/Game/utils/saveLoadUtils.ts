@@ -50,6 +50,46 @@ const storage = {
 };
 
 // --- helpers ------------------------------------------------------------------
+/**
+ * Get userId from AsyncStorage. Returns null if not found.
+ */
+const getUserId = async (): Promise<string | null> => {
+  try {
+    if (hasWebLocalStorage) {
+      return (window as any).localStorage.getItem('userId');
+    }
+    return await AsyncStorage.getItem('userId');
+  } catch (e) {
+    console.warn('Get userId error', e);
+    return null;
+  }
+};
+
+/**
+ * Get user-specific storage key by appending userId to the base key.
+ * If userId is not available, uses the base key (for backward compatibility).
+ */
+const getUserStorageKey = async (baseKey: string): Promise<string> => {
+  const userId = await getUserId();
+  if (userId) {
+    return `${baseKey}_${userId}`;
+  }
+  return baseKey;
+};
+
+/**
+ * Get user-specific save key for a game save.
+ * Format: sh_save__userId_gameId
+ */
+const getUserSaveKey = async (gameId: string): Promise<string> => {
+  const userId = await getUserId();
+  const basePrefix = localStorageKeys.savePrefix;
+  if (userId) {
+    return `${basePrefix}${userId}_${gameId}`;
+  }
+  return `${basePrefix}${gameId}`;
+};
+
 const getSaveListItemFromGameState = (gameState: GameState): GameSaveListItem => ({
   id: gameState.id,
   location: gameState.location,
@@ -95,14 +135,16 @@ export const saveGameLocal = async (gameState: GameState, isQuickSave: boolean) 
   };
 
   try {
+    const quickSaveKey = await getUserStorageKey(localStorageKeys.quickSaveKey);
     const saveKey = isQuickSave
-      ? localStorageKeys.quickSaveKey
-      : `${localStorageKeys.savePrefix}${gameState.id}`;
+      ? quickSaveKey
+      : await getUserSaveKey(gameState.id);
 
     storage.setItem(saveKey, JSON.stringify(gameStateNow));
 
     if (!isQuickSave) {
-      const savesListRaw = await storage.getItem(localStorageKeys.savesIndex);
+      const savesIndexKey = await getUserStorageKey(localStorageKeys.savesIndex);
+      const savesListRaw = await storage.getItem(savesIndexKey);
       let savesList: GameSaveListItem[] = [];
       if (savesListRaw && savesListRaw.length > 1) {
         try {
@@ -125,7 +167,7 @@ export const saveGameLocal = async (gameState: GameState, isQuickSave: boolean) 
         return bTime - aTime; // Descending order
       });
 
-      storage.setItem(localStorageKeys.savesIndex, JSON.stringify(newSavesList));
+      storage.setItem(savesIndexKey, JSON.stringify(newSavesList));
     }
   } catch (err) {
     console.error('Save Game Error', err);
@@ -135,7 +177,8 @@ export const saveGameLocal = async (gameState: GameState, isQuickSave: boolean) 
 /** Returns adapted list with pretty dates; [] if none. */
 export const getLocalSavesList = async (): Promise<GameSaveListItem[]> => {
   try {
-    const savesListRaw = await storage.getItem(localStorageKeys.savesIndex);
+    const savesIndexKey = await getUserStorageKey(localStorageKeys.savesIndex);
+    const savesListRaw = await storage.getItem(savesIndexKey);
     let savesList: GameSaveListItem[] = [];
     if (savesListRaw && savesListRaw.length > 1) {
       try {
@@ -159,7 +202,8 @@ export const getLocalSavesList = async (): Promise<GameSaveListItem[]> => {
 
 export const getQuickSave = async (): Promise<GameState | null> => {
   try {
-    const raw = await storage.getItem(localStorageKeys.quickSaveKey);
+    const quickSaveKey = await getUserStorageKey(localStorageKeys.quickSaveKey);
+    const raw = await storage.getItem(quickSaveKey);
     if (!raw) return null;
     try {
       return JSON.parse(raw) as GameState;
@@ -174,7 +218,8 @@ export const getQuickSave = async (): Promise<GameState | null> => {
 
 export const getLocalGameSave = async (gameId: string): Promise<GameState | null> => {
   try {
-    const raw = await storage.getItem(`${localStorageKeys.savePrefix}${gameId}`);
+    const saveKey = await getUserSaveKey(gameId);
+    const raw = await storage.getItem(saveKey);
     if (!raw) return null;
     try {
       return JSON.parse(raw) as GameState;
@@ -189,9 +234,11 @@ export const getLocalGameSave = async (gameId: string): Promise<GameState | null
 
 export const deleteSaveItem = async (gameId: string) => {
   try {
-    storage.removeItem(`${localStorageKeys.savePrefix}${gameId}`);
+    const saveKey = await getUserSaveKey(gameId);
+    storage.removeItem(saveKey);
 
-    const savesListRaw = await storage.getItem(localStorageKeys.savesIndex);
+    const savesIndexKey = await getUserStorageKey(localStorageKeys.savesIndex);
+    const savesListRaw = await storage.getItem(savesIndexKey);
     let savesList: GameSaveListItem[] = [];
     if (savesListRaw && savesListRaw.length > 1) {
       try {
@@ -200,7 +247,7 @@ export const deleteSaveItem = async (gameId: string) => {
         savesList = [];
       }
       const newSavesList = savesList.filter((save) => save.id !== gameId);
-      storage.setItem(localStorageKeys.savesIndex, JSON.stringify(newSavesList));
+      storage.setItem(savesIndexKey, JSON.stringify(newSavesList));
     }
   } catch (err) {
     console.error('Delete Save Error', err);

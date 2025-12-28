@@ -1820,15 +1820,36 @@ Type **confirm** to save it, or **cancel** to discard.`;
 function formatTransactionForResponse(transactionData) {
   const { type, amount, currency = "MYR", date, categoryId, description, paymentMethod } = transactionData;
   
-  // Format date as ISO string (YYYY-MM-DD) or "today"
+  // Format date as ISO string (YYYY-MM-DD) - avoid timezone issues
   let dateStr = null;
   if (date) {
-    try {
-      const dateObj = new Date(date);
-      dateStr = dateObj.toISOString().split("T")[0]; // YYYY-MM-DD format
-    } catch {
-      dateStr = null;
+    if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+      // Already in YYYY-MM-DD format, use directly
+      dateStr = date.trim();
+    } else {
+      // Try to parse and format as YYYY-MM-DD in local timezone
+      try {
+        const dateObj = typeof date === "string" ? new Date(date) : date;
+        if (dateObj instanceof Date && !isNaN(dateObj.getTime())) {
+          // Format as YYYY-MM-DD in local timezone (not UTC)
+          const year = dateObj.getFullYear();
+          const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+          const day = String(dateObj.getDate()).padStart(2, "0");
+          dateStr = `${year}-${month}-${day}`;
+        }
+      } catch {
+        dateStr = null;
+      }
     }
+  }
+  
+  // If date is still null, default to today
+  if (!dateStr) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    dateStr = `${year}-${month}-${day}`;
   }
   
   // Determine category name (use provided or infer from description)
@@ -1884,10 +1905,27 @@ async function createExpenseRecord(userId, { amount, currency = "MYR", date, cat
   // Map category if provided, otherwise try to infer from description
   let finalCategory = categoryId || mapCategoryToExisting(description, "expense");
   
-  // Validate date or default to today
+  // Validate date or default to today - handle YYYY-MM-DD format correctly
   let finalDate;
   try {
-    finalDate = date ? new Date(date).toISOString() : new Date().toISOString();
+    if (date) {
+      if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+        // YYYY-MM-DD format - parse as local date at noon to avoid timezone shifts
+        const [year, month, day] = date.trim().split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day, 12, 0, 0); // Noon local time
+        finalDate = dateObj.toISOString();
+      } else {
+        // Try to parse other date formats
+        const dateObj = new Date(date);
+        if (!isNaN(dateObj.getTime())) {
+          finalDate = dateObj.toISOString();
+        } else {
+          finalDate = new Date().toISOString();
+        }
+      }
+    } else {
+      finalDate = new Date().toISOString();
+    }
   } catch {
     finalDate = new Date().toISOString();
   }
@@ -1920,10 +1958,27 @@ async function createIncomeRecord(userId, { amount, currency = "MYR", date, cate
   // Map category if provided, otherwise try to infer from description
   let finalCategory = categoryId || mapCategoryToExisting(description, "income");
   
-  // Validate date or default to today
+  // Validate date or default to today - handle YYYY-MM-DD format correctly
   let finalDate;
   try {
-    finalDate = date ? new Date(date).toISOString() : new Date().toISOString();
+    if (date) {
+      if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
+        // YYYY-MM-DD format - parse as local date at noon to avoid timezone shifts
+        const [year, month, day] = date.trim().split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day, 12, 0, 0); // Noon local time
+        finalDate = dateObj.toISOString();
+      } else {
+        // Try to parse other date formats
+        const dateObj = new Date(date);
+        if (!isNaN(dateObj.getTime())) {
+          finalDate = dateObj.toISOString();
+        } else {
+          finalDate = new Date().toISOString();
+        }
+      }
+    } else {
+      finalDate = new Date().toISOString();
+    }
   } catch {
     finalDate = new Date().toISOString();
   }
@@ -1963,10 +2018,27 @@ IMPORTANT FINANCIAL CONCEPTS:
 - If budgetSummary.totalBudget is 0 or every category has a 0 budget, do NOT comment about overspending vs budget because there is no budget baseline.
 
 TRANSACTION LOGGING:
-- When the user CLEARLY asks to log/add/record/save an expense or income (e.g., "Add an expense", "Log my salary", "I paid RM 120"), call the create_transaction tool.
+- When the user asks to log/add/record/save an expense or income, ALWAYS call the create_transaction tool.
+- RECOGNIZE these patterns as transaction requests (call the tool):
+  * "add RM10 expenses for chicken rice lunch today"
+  * "add RM10 expense for [description]"
+  * "add RM10 for [description]"
+  * "add expense RM10 for [description]"
+  * "add [amount] expenses for [description]"
+  * "add [amount] expense for [description]"
+  * "log expense [amount] for [description]"
+  * "record expense [amount] for [description]"
+  * "I spent RM [amount] on [description]"
+  * "I paid RM [amount] for [description]"
+  * "Add an expense of RM [amount]"
+  * "Log my salary of RM [amount]"
+  * Any variation of "add/log/record/save" + amount + description
 - If the user is just TALKING about money without asking to log it (e.g., "I hate paying RM 100 for parking"), do NOT create a transaction.
-- Only call create_transaction when the user explicitly intends to record a transaction.
-- If critical fields are missing (amount, type, or unclear date), ask a clarifying question before calling the tool.
+- Extract the amount from phrases like "RM10", "RM 10", "10 MYR", "10 ringgit" - all mean 10 MYR.
+- Extract the description from the rest of the message (e.g., "chicken rice lunch" from "add RM10 expenses for chicken rice lunch today").
+- Extract the date: "today" = current date, "yesterday" = yesterday's date, specific dates should be parsed.
+- If amount is missing or unclear, ask for clarification before calling the tool.
+- If type (expense vs income) is unclear, infer from context: spending/paying = expense, receiving/earning = income.
 - IMPORTANT: When proposing a new transaction using the create_transaction tool, you are only suggesting the data. The system will show a confirmation card with buttons. Do NOT say that a transaction has already been saved. Use language like "I'm about to log this transaction" and let the system handle the actual save after user confirmation via buttons.`;
 
 // OpenAI function/tool definition for create_transaction
@@ -1974,7 +2046,7 @@ const CREATE_TRANSACTION_TOOL = {
   type: "function",
   function: {
     name: "create_transaction",
-    description: "Create a new expense or income transaction record. Use this when the user explicitly asks to log/add/record/save an expense or income.",
+    description: "Create a new expense or income transaction record. Use this when the user asks to log/add/record/save an expense or income. Examples: 'add RM10 expenses for chicken rice lunch today', 'add RM50 expense for groceries', 'add RM100 for transport', 'log expense RM20 for coffee', 'I spent RM30 on lunch'. Extract amount (e.g., 'RM10', 'RM 10', '10 MYR' all mean 10), description (e.g., 'chicken rice lunch'), date ('today' = current date, 'yesterday' = yesterday, or parse specific dates), and type (spending/paying = expense, receiving/earning = income).",
     parameters: {
       type: "object",
       properties: {
@@ -1994,7 +2066,7 @@ const CREATE_TRANSACTION_TOOL = {
         },
         date: {
           type: "string",
-          description: "Transaction date in ISO format (YYYY-MM-DD or full ISO string). Default to today if not specified or unclear.",
+          description: "Transaction date. Can be: 'today' (for current date), 'yesterday' (for yesterday's date), a date in YYYY-MM-DD format, or a natural language date. If not specified or unclear, use 'today'. The system will convert 'today' and 'yesterday' to the correct date.",
         },
         categoryId: {
           type: "string",
@@ -2785,9 +2857,85 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
           const args = JSON.parse(toolCall.function.arguments);
           console.log("🔧 Tool call received:", args);
 
+          // Normalize amount - handle string amounts like "10" or "RM10"
+          let normalizedAmount = args.amount;
+          if (typeof normalizedAmount === "string") {
+            // Remove currency symbols and whitespace, then parse
+            normalizedAmount = parseFloat(normalizedAmount.replace(/[RM\s,]/gi, "")) || null;
+          }
+          if (normalizedAmount === null || isNaN(normalizedAmount) || normalizedAmount <= 0) {
+            finalReply = "I need a valid amount to create a record. Could you please provide the amount?";
+            return res.json({
+              type: "normal",
+              message: finalReply,
+            });
+          }
+
+          // Normalize date - handle "today", "yesterday", or parse ISO dates
+          let normalizedDate = args.date;
+          if (!normalizedDate || (typeof normalizedDate === "string" && normalizedDate.toLowerCase().trim() === "today")) {
+            // Get today's date in local timezone (YYYY-MM-DD)
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, "0");
+            const day = String(today.getDate()).padStart(2, "0");
+            normalizedDate = `${year}-${month}-${day}`;
+          } else if (typeof normalizedDate === "string" && normalizedDate.toLowerCase().trim() === "yesterday") {
+            // Get yesterday's date in local timezone (YYYY-MM-DD)
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const year = yesterday.getFullYear();
+            const month = String(yesterday.getMonth() + 1).padStart(2, "0");
+            const day = String(yesterday.getDate()).padStart(2, "0");
+            normalizedDate = `${year}-${month}-${day}`;
+          } else if (typeof normalizedDate === "string") {
+            // Try to parse the date string
+            // If it's already in YYYY-MM-DD format, use it directly
+            if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate.trim())) {
+              normalizedDate = normalizedDate.trim();
+            } else {
+              // Try to parse other date formats
+              try {
+                const dateObj = new Date(normalizedDate);
+                if (!isNaN(dateObj.getTime())) {
+                  // Format as YYYY-MM-DD in local timezone
+                  const year = dateObj.getFullYear();
+                  const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+                  const day = String(dateObj.getDate()).padStart(2, "0");
+                  normalizedDate = `${year}-${month}-${day}`;
+                } else {
+                  // If parsing fails, default to today
+                  const today = new Date();
+                  const year = today.getFullYear();
+                  const month = String(today.getMonth() + 1).padStart(2, "0");
+                  const day = String(today.getDate()).padStart(2, "0");
+                  normalizedDate = `${year}-${month}-${day}`;
+                }
+              } catch {
+                // If parsing fails, default to today
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, "0");
+                const day = String(today.getDate()).padStart(2, "0");
+                normalizedDate = `${year}-${month}-${day}`;
+              }
+            }
+          } else {
+            // If date is not a string, default to today
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, "0");
+            const day = String(today.getDate()).padStart(2, "0");
+            normalizedDate = `${year}-${month}-${day}`;
+          }
+
           // Validate required fields
-          if (!args.type || !args.amount) {
-            finalReply = "I need both the transaction type (expense or income) and amount to create a record. Could you please provide those?";
+          if (!args.type) {
+            finalReply = "I need to know if this is an expense or income. Could you please clarify?";
+            return res.json({
+              type: "normal",
+              message: finalReply,
+            });
           } else {
             // Store as pending transaction instead of immediately saving
             // NOTE: For now, we require confirmation for ALL transactions.
@@ -2795,13 +2943,13 @@ ${createdRecord.exp_notes || createdRecord.inc_notes ? `• Description: ${creat
             // but always require confirmation for large amounts (>= 1000 MYR).
             const requiresConfirmation = true; // Set to false for auto-save on small amounts in future
             
-            if (requiresConfirmation || args.amount >= 1000) {
+            if (requiresConfirmation || normalizedAmount >= 1000) {
               // Store pending transaction
               const transactionData = {
                 type: args.type,
-                amount: args.amount,
+                amount: normalizedAmount,
                 currency: args.currency || "MYR",
-                date: args.date,
+                date: normalizedDate,
                 categoryId: args.categoryId,
                 description: args.description || "",
                 paymentMethod: args.paymentMethod || (args.type === "expense" ? "Cash" : "Bank"),
@@ -3462,6 +3610,6 @@ app.get("/health", (req, res) => {
 // Listen on all interfaces (0.0.0.0) so it's accessible from other devices on the network
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`✅ Backend running on http://0.0.0.0:${PORT}`);
-  console.log(`✅ Accessible from network at http://192.168.0.97:${PORT}`);
+  console.log(`✅ Accessible from network at http://192.168.0.96:${PORT}`);
   console.log(`✅ Health check: http://localhost:${PORT}/health`);
 });

@@ -12,8 +12,8 @@
 // export const CHAT_SERVER_URL = "http://172.20.10.9:3000";   // your current Node/Express for /chat
 // export const API_SERVER_URL  = "http://172.20.10.9:8080";   // your Spring Boot for /api/expenses
 
-export const CHAT_SERVER_URL = "http://192.168.0.97:3000"; 
-export const API_SERVER_URL  = "http://192.168.0.97:8080";
+export const CHAT_SERVER_URL = "http://192.168.0.96:3000"; 
+export const API_SERVER_URL  = "http://192.168.0.96:8080";
 
 
 // Android emulator? use http://10.0.2.2:<port>

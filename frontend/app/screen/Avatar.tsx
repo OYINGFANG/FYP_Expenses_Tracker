@@ -53,11 +53,11 @@ type Message =
     };
 
 // const YOUR_COMPUTER_IP = "172.20.10.9";
-const YOUR_COMPUTER_IP = "192.168.0.97";
+const YOUR_COMPUTER_IP = "192.168.0.96";
 
 // For Android emulator, use 10.0.2.2. For real device or iOS, use your computer's IP
 const BASE_URL = Platform.OS === "android"
-  ? "http://192.168.0.97:3000"
+  ? "http://192.168.0.96:3000"
   : `http://${YOUR_COMPUTER_IP}:3000`;
 
 
@@ -634,7 +634,7 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
         
         // Handle network errors gracefully
         if (err.message?.includes("Cannot connect") || err.message?.includes("Network request failed")) {
-          throw new Error("Cannot connect to chatbot server. Please ensure the backend server is running at http://192.168.0.97:3000");
+          throw new Error("Cannot connect to chatbot server. Please ensure the backend server is running at http://192.168.0.96:3000");
         }
         throw err;
       }
@@ -650,7 +650,7 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
       // Provide helpful error messages
       let errorMessage = "Sorry, I encountered an error. Please try again.";
       if (err.message?.includes("Cannot connect") || err.message?.includes("Network request failed")) {
-        errorMessage = "⚠️ Cannot connect to chatbot server.\n\nPlease check:\n1. Backend server is running (node server.js)\n2. Server IP is correct: 192.168.0.97:3000\n3. Your device and computer are on the same network\n4. Firewall is not blocking port 3000";
+        errorMessage = "⚠️ Cannot connect to chatbot server.\n\nPlease check:\n1. Backend server is running (node server.js)\n2. Server IP is correct: 192.168.0.96:3000\n3. Your device and computer are on the same network\n4. Firewall is not blocking port 3000";
       } else if (err.message?.includes("timeout")) {
         errorMessage = "Request timed out. The server is taking too long to respond. Please try again.";
       }
@@ -809,7 +809,7 @@ export default function AvatarScreen({ onClose }: AvatarScreenProps) {
       // Provide helpful error message
       let errorText = "Sorry, I encountered an error. Please try again.";
       if (err.message?.includes("Cannot connect") || err.message?.includes("Network request failed")) {
-        errorText = "⚠️ Cannot connect to chatbot server.\n\nPlease ensure:\n• Backend server is running (node server.js)\n• Server IP is correct: 192.168.0.97:3000\n• Device and computer are on same network";
+        errorText = "⚠️ Cannot connect to chatbot server.\n\nPlease ensure:\n• Backend server is running (node server.js)\n• Server IP is correct: 192.168.0.96:3000\n• Device and computer are on same network";
       } else if (err.message?.includes("timeout")) {
         errorText = "Request timed out. Please try again.";
       }

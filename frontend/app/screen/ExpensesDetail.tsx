@@ -13,6 +13,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { db } from "../../firebase";
 
 import {
   subscribeUserExpenseRecords,
@@ -141,6 +144,33 @@ function Chip({
         styles.chip,
         compact && styles.chipCompact,
         active ? styles.chipActive : styles.chipInactive,
+      ]}
+    >
+      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/** ---------- Edit Modal Chip (uses #115D59 color) ---------- */
+function EditChip({
+  label,
+  active,
+  onPress,
+  compact,
+}: {
+  label: string;
+  active?: boolean;
+  onPress?: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+      style={[
+        styles.chip,
+        compact && styles.chipCompact,
+        active ? styles.editChipActive : styles.chipInactive,
       ]}
     >
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
@@ -352,6 +382,16 @@ export default function ExpensesDetail() {
 
   const [openModal, setOpenModal] = useState(false);
   const [selected, setSelected] = useState<ExpenseRecord | null>(null);
+  
+  // Edit modal state
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editAmount, setEditAmount] = useState("");
+  const [editCategory, setEditCategory] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState("Cash");
+  const [editDate, setEditDate] = useState<Date>(new Date());
+  const [editNote, setEditNote] = useState("");
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Get userId and subscribe to currency
   useEffect(() => {
@@ -512,13 +552,94 @@ export default function ExpensesDetail() {
   };
 
   const handleDelete = () => {
-    setOpenModal(false);
-    Alert.alert("Delete", "Implement deleteExpenseRecord() for your backend.");
+    if (!selected || !selected.id) {
+      Alert.alert("Error", "No expense selected");
+      return;
+    }
+
+    Alert.alert(
+      "Delete Expense",
+      `Are you sure you want to delete this expense of ${formatCurrency(Number(selected.amount) || 0, currency)}? This action cannot be undone.`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const expenseRef = doc(db, "EXPENSES", selected.id);
+              await deleteDoc(expenseRef);
+              
+              Alert.alert("Success", "Expense deleted successfully");
+              setOpenModal(false);
+            } catch (error) {
+              console.error("Error deleting expense:", error);
+              Alert.alert("Error", "Failed to delete expense. Please try again.");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleEdit = () => {
+    if (!selected) return;
+    
+    // Close detail modal and open edit modal
     setOpenModal(false);
-    router.push({ pathname: "/screen/AddRecord", params: { editId: selected?.id || "" } });
+    
+    // Prefill edit form with selected expense data
+    setEditAmount(String(selected.amount || ""));
+    setEditCategory(selected.category || "");
+    setEditPaymentMethod((selected as any).paymentMethod || "Cash");
+    setEditDate(new Date(selected.dateISO));
+    setEditNote(selected.description || (selected as any).note || "");
+    
+    // Open edit modal
+    setEditModalVisible(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selected || !selected.id) {
+      Alert.alert("Error", "No expense selected");
+      return;
+    }
+
+    // Validation
+    if (!editAmount || parseFloat(editAmount) <= 0) {
+      Alert.alert("Error", "Please enter a valid amount");
+      return;
+    }
+
+    if (!editCategory) {
+      Alert.alert("Error", "Please select a category");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const expenseRef = doc(db, "EXPENSES", selected.id);
+      await updateDoc(expenseRef, {
+        exp_total: parseFloat(editAmount),
+        exp_category: editCategory,
+        exp_payment_method: editPaymentMethod,
+        exp_date: editDate.toISOString(),
+        exp_notes: editNote,
+        updated_at: new Date().toISOString(),
+      });
+
+      Alert.alert("Success", "Expense updated successfully");
+      setEditModalVisible(false);
+      setOpenModal(false);
+    } catch (error) {
+      console.error("Error updating expense:", error);
+      Alert.alert("Error", "Failed to update expense. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -825,6 +946,141 @@ export default function ExpensesDetail() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Expense Modal */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <Ionicons name="create-outline" size={18} color={BRAND_DARK} />
+                <Text style={styles.modalTitle}>Edit Expense</Text>
+              </View>
+              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
+                <Ionicons name="close" size={20} color={BRAND_DARK} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView 
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.editModalContent}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+            >
+              {/* Amount */}
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Amount</Text>
+                <TextInput
+                  style={styles.editInput}
+                  value={editAmount}
+                  onChangeText={setEditAmount}
+                  placeholder="0.00"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              {/* Category */}
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Category</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.categoryChipsRow}
+                >
+                  {CATEGORY_ORDER.filter(c => c !== "Savings" && c !== "Debt").map((cat) => (
+                    <EditChip
+                      key={cat}
+                      label={cat}
+                      active={editCategory === cat}
+                      onPress={() => setEditCategory(cat)}
+                      compact
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Payment Method */}
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Payment Method</Text>
+                <View style={styles.paymentMethodRow}>
+                  {["Cash", "Bank", "Credit Card"].map((method) => (
+                    <EditChip
+                      key={method}
+                      label={method}
+                      active={editPaymentMethod === method}
+                      onPress={() => setEditPaymentMethod(method)}
+                      compact
+                    />
+                  ))}
+                </View>
+              </View>
+
+              {/* Date */}
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Date</Text>
+                <TouchableOpacity
+                  style={styles.datePickerButton}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Ionicons name="calendar-outline" size={18} color={BRAND_DARK} />
+                  <Text style={styles.datePickerText}>
+                    {editDate.toLocaleDateString("en-US", {
+                      weekday: "long",
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={MUTED} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Note */}
+              <View style={styles.editField}>
+                <Text style={styles.editLabel}>Note (Optional)</Text>
+                <TextInput
+                  style={[styles.editInput, styles.editTextArea]}
+                  value={editNote}
+                  onChangeText={setEditNote}
+                  placeholder="Add a note..."
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                  numberOfLines={3}
+                  maxLength={200}
+                />
+              </View>
+
+              {/* Save Button */}
+              <TouchableOpacity
+                style={[styles.saveEditButton, isSaving && styles.saveEditButtonDisabled]}
+                onPress={handleSaveEdit}
+                disabled={isSaving}
+              >
+                <Text style={styles.saveEditButtonText}>
+                  {isSaving ? "Saving..." : "Save Changes"}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <DateTimePickerModal
+        isVisible={showDatePicker}
+        mode="date"
+        date={editDate}
+        onConfirm={(date) => {
+          setShowDatePicker(false);
+          setEditDate(date);
+        }}
+        onCancel={() => setShowDatePicker(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1046,6 +1302,10 @@ const styles = StyleSheet.create({
   chipActive: {
     backgroundColor: BRAND_DARK,
     borderColor: BRAND_DARK,
+  },
+  editChipActive: {
+    backgroundColor: "#115D59",
+    borderColor: "#115D59",
   },
   chipText: {
     fontSize: 12,
@@ -1467,6 +1727,74 @@ const styles = StyleSheet.create({
   modalBtnText: {
     fontWeight: "800",
     fontSize: 14,
+  },
+  
+  // Edit Modal Styles
+  editModalContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+  },
+  editField: {
+    marginTop: 20,
+  },
+  editLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: BRAND_DARK,
+    marginBottom: 10,
+  },
+  editInput: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: BRAND_DARK,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  editTextArea: {
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  paymentMethodRow: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  datePickerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    gap: 10,
+  },
+  datePickerText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: BRAND_DARK,
+  },
+  saveEditButton: {
+    backgroundColor: "#115D59",
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: "center",
+    marginTop: 24,
+    marginBottom: 10,
+  },
+  saveEditButtonDisabled: {
+    backgroundColor: "#115D59",
+    opacity: 0.6,
+  },
+  saveEditButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });
 

@@ -41,21 +41,22 @@ const Table: React.FC<TableProps> = ({ data, fieldLabels, actions, sortField, so
     <View style={styles.table}>
         <View style={styles.header}>
           {fieldLabels.map((field, index) => {
-            // Determine flex style based on column index
+            // Determine flex style based on column index to match data cells
             let flexStyle = styles.headerCellFlex;
             if (index === 0) {
-              flexStyle = styles.headerCellFlexLarge;
-            } else if (index === 1 || index === 2) {
-              // Price and Owned columns get smaller flex
+              // Location column - smaller width
               flexStyle = styles.headerCellFlexSmall;
+            } else if (index === 1) {
+              // Date column - larger width
+              flexStyle = styles.headerCellFlexLarge;
+            } else if (index === 2) {
+              // Net wealth column - extra small width
+              flexStyle = styles.headerCellFlexExtraSmall;
             }
             return (
               <View 
                 key={field.slug} 
-                style={[
-                  styles.headerCell, 
-                  useFlexWidths ? flexStyle : { width: regularColumnWidth }
-                ]}
+                style={[styles.headerCell, useFlexWidths ? flexStyle : { width: regularColumnWidth }]}
               >
                 <Text style={styles.headerText}>
                   <FormattedMessage id={field.titleKey} />
@@ -65,10 +66,7 @@ const Table: React.FC<TableProps> = ({ data, fieldLabels, actions, sortField, so
           })}
           {actions && (
             <View 
-              style={[
-                styles.headerCell, 
-                useFlexWidths ? styles.actionsHeaderCellFlex : { width: actionColumnWidth }
-              ]}
+              style={[styles.headerCell, styles.headerCellNoBorder, useFlexWidths ? styles.actionsHeaderCellFlex : { width: actionColumnWidth }]}
             >
               <Text style={styles.headerText}>Actions</Text>
             </View>
@@ -82,10 +80,14 @@ const Table: React.FC<TableProps> = ({ data, fieldLabels, actions, sortField, so
               // Determine flex style based on column index
               let flexStyle = styles.cellFlex;
               if (index === 0) {
-                flexStyle = styles.cellFlexLarge;
-              } else if (index === 1 || index === 2) {
-                // Price and Owned columns get smaller flex
+                // Location column - smaller width
                 flexStyle = styles.cellFlexSmall;
+              } else if (index === 1) {
+                // Date column - larger width
+                flexStyle = styles.cellFlexLarge;
+              } else if (index === 2) {
+                // Net wealth column - extra small width
+                flexStyle = styles.cellFlexExtraSmall;
               }
               return (
                 <View 
@@ -109,6 +111,7 @@ const Table: React.FC<TableProps> = ({ data, fieldLabels, actions, sortField, so
               <View 
                 style={[
                   styles.cell, 
+                  styles.cellNoBorder,
                   useFlexWidths ? styles.actionsCellFlex : { width: actionColumnWidth },
                   styles.actionsCell
                 ]}
@@ -131,46 +134,59 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F2937',
     borderBottomWidth: 2,
     borderBottomColor: '#F59E0B',
+    width: '100%',
   },
   headerCell: {
     paddingVertical: 8,
     paddingHorizontal: 10,
-    minWidth: 80,
     borderRightWidth: 1,
     borderRightColor: '#374151',
+  },
+  headerCellNoBorder: {
+    borderRightWidth: 0,
   },
   headerCellFlex: {
     flex: 1,
     flexBasis: 0,
     minWidth: 80,
+    maxWidth: '100%',
   },
   headerCellFlexLarge: {
     flex: 2.5,
     flexBasis: 0,
-    minWidth: 120,
+    minWidth: 85,
+    maxWidth: '100%',
   },
   headerCellFlexSmall: {
     flex: 0.6,
     flexBasis: 0,
+    minWidth: 80,
+    maxWidth: '100%',
+  },
+  headerCellFlexExtraSmall: {
+    flex: 0.4,
+    flexBasis: 0,
     minWidth: 60,
+    maxWidth: '100%',
   },
   actionsHeaderCellFlex: {
     flex: 1,
     flexBasis: 0,
     minWidth: 100,
+    maxWidth: '100%',
   },
   headerText: {
     color: '#FDE68A',
     fontWeight: '800',
     fontSize: 12,
     textTransform: 'uppercase',
-    flexShrink: 1,
   },
   row: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
     alignItems: 'flex-start',
+    width: '100%',
   },
   rowEven: {
     backgroundColor: '#F9FAFB',
@@ -184,6 +200,9 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     alignItems: 'flex-start',
   },
+  cellNoBorder: {
+    borderRightWidth: 0,
+  },
   cellFlex: {
     flex: 1,
     flexBasis: 0,
@@ -193,11 +212,17 @@ const styles = StyleSheet.create({
   cellFlexLarge: {
     flex: 2.5,
     flexBasis: 0,
-    minWidth: 120,
+    minWidth: 85,
     maxWidth: '100%',
   },
   cellFlexSmall: {
     flex: 0.6,
+    flexBasis: 0,
+    minWidth: 80,
+    maxWidth: '100%',
+  },
+  cellFlexExtraSmall: {
+    flex: 0.4,
     flexBasis: 0,
     minWidth: 60,
     maxWidth: '100%',
@@ -208,7 +233,8 @@ const styles = StyleSheet.create({
     minWidth: 100,
   },
   actionsCell: {
-    padding: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
