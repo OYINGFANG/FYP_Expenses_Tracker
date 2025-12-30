@@ -81,6 +81,7 @@ function GoalRow({
   onEdit,
   onDelete,
   onAddContribution,
+  onViewDetails,
   currency,
   contributions,
 }: {
@@ -88,6 +89,7 @@ function GoalRow({
   onEdit: () => void;
   onDelete: () => void;
   onAddContribution: () => void;
+  onViewDetails: () => void;
   currency: Currency;
   contributions: SavingsContribution[];
 }) {
@@ -195,7 +197,13 @@ function GoalRow({
       {/* Recent Contributions */}
       {contributions.length > 0 && (
         <View style={styles.contributionsSection}>
-          <Text style={styles.contributionsTitle}>Recent Contributions</Text>
+          <View style={styles.contributionsHeader}>
+            <Text style={styles.contributionsTitle}>Recent Contributions</Text>
+            <TouchableOpacity onPress={onViewDetails} style={styles.viewDetailsBtn}>
+              <Text style={styles.viewDetailsText}>View All</Text>
+              <Ionicons name="chevron-forward" size={14} color={BRAND_DARK} />
+            </TouchableOpacity>
+          </View>
           {contributions.slice(0, 3).map((c) => (
             <View key={c.id} style={styles.contributionRow}>
               <Ionicons name="checkmark-circle" size={14} color={BRAND_GREEN} />
@@ -217,6 +225,102 @@ function GoalRow({
       </TouchableOpacity>
       )}
     </View>
+  );
+}
+
+/* ---------- Contribution Details Modal ---------- */
+function ContributionDetailsModal({
+  open,
+  goal,
+  contributions,
+  onClose,
+  currency,
+}: {
+  open: boolean;
+  goal: SavingsGoal | null;
+  contributions: SavingsContribution[];
+  onClose: () => void;
+  currency: Currency;
+}) {
+  if (!goal) return null;
+
+  const sortedContributions = [...contributions].sort((a, b) => 
+    new Date(b.date).getTime() - new Date(a.date).getTime()
+  );
+
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalWrap}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Contribution History</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={22} color={BRAND_DARK} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+            {/* Goal Info */}
+            <View style={styles.detailsGoalInfo}>
+              <Text style={styles.detailsGoalName}>{goal.name}</Text>
+              <View style={styles.detailsGoalStats}>
+                <View style={styles.detailsStatItem}>
+                  <Text style={styles.detailsStatLabel}>Target Amount</Text>
+                  <Text style={styles.detailsStatValue}>{formatCurrency(goal.targetAmount, currency)}</Text>
+                </View>
+                <View style={styles.detailsStatDivider} />
+                <View style={styles.detailsStatItem}>
+                  <Text style={styles.detailsStatLabel}>Total Contributed</Text>
+                  <Text style={[styles.detailsStatValue, { color: BRAND_GREEN }]}>
+                    {formatCurrency(goal.currentAmount, currency)}
+                  </Text>
+                </View>
+                <View style={styles.detailsStatDivider} />
+                <View style={styles.detailsStatItem}>
+                  <Text style={styles.detailsStatLabel}>Remaining</Text>
+                  <Text style={styles.detailsStatValue}>
+                    {formatCurrency(Math.max(0, goal.targetAmount - goal.currentAmount), currency)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Contribution History */}
+            <View style={styles.detailsSection}>
+              <Text style={styles.detailsSectionTitle}>
+                Contribution History ({sortedContributions.length})
+              </Text>
+              {sortedContributions.length === 0 ? (
+                <View style={styles.detailsEmpty}>
+                  <Ionicons name="receipt-outline" size={32} color={MUTED} />
+                  <Text style={styles.detailsEmptyText}>No contributions recorded yet</Text>
+                </View>
+              ) : (
+                sortedContributions.map((contribution) => (
+                  <View key={contribution.id} style={styles.detailsContributionRow}>
+                    <View style={styles.detailsContributionLeft}>
+                      <Ionicons name="checkmark-circle" size={18} color={BRAND_GREEN} />
+                      <View style={styles.detailsContributionInfo}>
+                        <Text style={styles.detailsContributionDate}>{formatDate(contribution.date)}</Text>
+                        {contribution.note && (
+                          <Text style={styles.detailsContributionNote}>{contribution.note}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <Text style={styles.detailsContributionAmount}>{formatCurrency(contribution.amount, currency)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </ScrollView>
+
+          <TouchableOpacity onPress={onClose} style={styles.modalPrimary}>
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.modalPrimaryText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -883,6 +987,9 @@ export default function Savings() {
   const [contributionModalOpen, setContributionModalOpen] = useState(false);
   const [contributionGoal, setContributionGoal] = useState<SavingsGoal | null>(null);
 
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedGoal, setSelectedGoal] = useState<SavingsGoal | null>(null);
+
   const [newBadgeModalOpen, setNewBadgeModalOpen] = useState(false);
   const [newBadge, setNewBadge] = useState<SavingsBadge | null>(null);
   const [showCompletedGoals, setShowCompletedGoals] = useState(true);
@@ -1335,6 +1442,10 @@ export default function Savings() {
                 onEdit={() => openEdit(goal)}
                 onDelete={() => deleteGoal(goal.id)}
                 onAddContribution={() => openContributionModal(goal)}
+                onViewDetails={() => {
+                  setSelectedGoal(goal);
+                  setDetailsModalOpen(true);
+                }}
                 currency={currency}
                 contributions={contributionsMap[goal.id] || []}
               />
@@ -1363,6 +1474,10 @@ export default function Savings() {
                   onEdit={() => openEdit(goal)}
                   onDelete={() => deleteGoal(goal.id)}
                   onAddContribution={() => {}} // No-op since button is hidden for completed goals
+                  onViewDetails={() => {
+                    setSelectedGoal(goal);
+                    setDetailsModalOpen(true);
+                  }}
                   currency={currency}
                   contributions={contributionsMap[goal.id] || []}
                 />
@@ -1383,6 +1498,17 @@ export default function Savings() {
         goal={contributionGoal}
         onClose={() => setContributionModalOpen(false)}
         onSave={saveContribution}
+        currency={currency}
+      />
+
+      <ContributionDetailsModal
+        open={detailsModalOpen}
+        goal={selectedGoal}
+        contributions={selectedGoal ? (contributionsMap[selectedGoal.id] || []) : []}
+        onClose={() => {
+          setDetailsModalOpen(false);
+          setSelectedGoal(null);
+        }}
         currency={currency}
       />
 
@@ -1789,12 +1915,27 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 10,
   },
+  contributionsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
   contributionsTitle: {
     fontSize: 11,
     fontWeight: "800",
     color: BRAND_DARK,
-    marginBottom: 6,
     textTransform: "uppercase",
+  },
+  viewDetailsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  viewDetailsText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: BRAND_DARK,
   },
   contributionRow: {
     flexDirection: "row",
@@ -2387,6 +2528,99 @@ const styles = StyleSheet.create({
     color: RED,
     fontSize: 12,
     fontWeight: "700",
+  },
+  // Contribution Details Modal Styles
+  detailsGoalInfo: {
+    backgroundColor: "#F7FAF9",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  detailsGoalName: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: BRAND_DARK,
+    marginBottom: 12,
+  },
+  detailsGoalStats: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  detailsStatItem: {
+    flex: 1,
+  },
+  detailsStatDivider: {
+    width: 1,
+    backgroundColor: LINE_SOFT,
+    marginHorizontal: 10,
+  },
+  detailsStatLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: MUTED,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  detailsStatValue: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: BRAND_DARK,
+  },
+  detailsSection: {
+    marginTop: 8,
+  },
+  detailsSectionTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: BRAND_DARK,
+    marginBottom: 10,
+    textTransform: "uppercase",
+  },
+  detailsEmpty: {
+    alignItems: "center",
+    paddingVertical: 32,
+    gap: 8,
+  },
+  detailsEmptyText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: MUTED,
+  },
+  detailsContributionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    marginBottom: 8,
+    ...shadow(1, 0.05),
+  },
+  detailsContributionLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  detailsContributionInfo: {
+    flex: 1,
+  },
+  detailsContributionDate: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: BRAND_DARK,
+    marginBottom: 2,
+  },
+  detailsContributionNote: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: MUTED,
+  },
+  detailsContributionAmount: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: BRAND_GREEN,
   },
   filterOptionRow: {
     flexDirection: "row",

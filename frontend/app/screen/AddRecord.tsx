@@ -35,9 +35,10 @@ export default function AddRecord() {
   const categoryParam = Array.isArray(params.category) ? params.category[0] : params.category;
   const merchantParam = Array.isArray(params.merchantName) ? params.merchantName[0] : params.merchantName;
   const paymentMethodParam = Array.isArray(params.paymentMethod) ? params.paymentMethod[0] : params.paymentMethod;
+  const recordTypeParam = Array.isArray(params.recordType) ? params.recordType[0] : params.recordType;
   
   // Create a stable string key from params to detect changes
-  const paramsKey = `${amountParam || ""}|${dateParam || ""}|${noteParam || ""}|${categoryParam || ""}|${merchantParam || ""}|${paymentMethodParam || ""}`;
+  const paramsKey = `${amountParam || ""}|${dateParam || ""}|${noteParam || ""}|${categoryParam || ""}|${merchantParam || ""}|${paymentMethodParam || ""}|${recordTypeParam || ""}`;
 
   // Load user's currency preference
   useEffect(() => {
@@ -79,6 +80,19 @@ export default function AddRecord() {
     if (prevParamsRef.current === paramsKey) return;
     prevParamsRef.current = paramsKey;
 
+    // Set record type first (Expenses or Income) if provided
+    // Update both state and animation to ensure UI is synchronized
+    if (recordTypeParam && (recordTypeParam === "Expenses" || recordTypeParam === "Income")) {
+      setSelected(recordTypeParam);
+      // Trigger animation to match the selected state
+      Animated.spring(slideAnim, {
+        toValue: recordTypeParam === "Expenses" ? 0 : 1,
+        friction: 8,
+        tension: 100,
+        useNativeDriver: true,
+      }).start();
+    }
+
     if (amountParam) setInputValue(amountParam);
     if (dateParam) setSelectedDate(new Date(dateParam));
     if (noteParam) setNote(noteParam);
@@ -101,7 +115,7 @@ export default function AddRecord() {
         setPaymentMethod(normalized);
       }
     }
-  }, [paramsKey, amountParam, dateParam, noteParam, categoryParam, merchantParam, paymentMethodParam]);
+  }, [paramsKey, amountParam, dateParam, noteParam, categoryParam, merchantParam, paymentMethodParam, recordTypeParam]);
 
   type CategoryOption = { icon: string; label: string; type: "MaterialIcons" | "FontAwesome5"; disabled?: boolean };
 

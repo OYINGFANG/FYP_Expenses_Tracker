@@ -1123,8 +1123,12 @@ const debtHealth = useMemo(() => {
       }
 
       const receipt = result.receipts[0];
+      const receiptType = receipt.receipt_type || "physical"; // Default to physical for backward compatibility
       const total = receipt.total || receipt.totalInclTax || "0.00";
-      const date  = normalizeReceiptDate(receipt.date);
+      
+      // Use date_time if available (for e-receipts), otherwise use date
+      const receiptDate = receipt.date_time || receipt.date;
+      const date = normalizeReceiptDate(receiptDate);
       const rawText = receipt.ocr_text || receipt.raw_text || "";
       const merchantName = receipt.merchant_name || "";
       const receiptPaymentMethod = receipt.payment_method || null;
@@ -1132,42 +1136,111 @@ const debtHealth = useMemo(() => {
       const serviceCharge = typeof receipt.service_charge === "number" ? receipt.service_charge : 0;
       const taxAmount = typeof receipt.tax === "number" ? receipt.tax : 0;
 
-      const category = detectCategory(rawText);
-      const paymentMethod = detectPaymentMethod(rawText, receiptPaymentMethod);
-
+      console.log("🧾 Receipt Type:", receiptType);
       console.log("💰 Total:", total);
       console.log("📅 Date:", date);
-      console.log("🏷️ Category:", category);
-      console.log("🏦 Payment Method:", paymentMethod);
       console.log("🏪 Merchant:", merchantName);
 
-      if (receipt.items && receipt.items.length > 0) {
-        router.push({
-          pathname: "/screen/SelectReceiptItems",
-          params: {
-            items: JSON.stringify(receipt.items),
-            merchant: merchantName,
-            date,
-            category,
-            paymentMethod,
-            subtotal: receipt.sub_total != null ? String(receipt.sub_total) : "",
-            serviceCharge: serviceCharge ? String(serviceCharge) : "",
-            tax: taxAmount ? String(taxAmount) : "",
-            grandTotal: String(total),
-          },
-        });
-      } else {
+      // Handle e-receipts differently from physical receipts
+      if (receiptType === "e-receipt") {
+        // Extract merchant from "Transfer To" field (recipient)
+        const eReceiptMerchant = receipt.recipient || merchantName || "E-Receipt";
+        
+        // Extract note from "Payment Details" (description) or reference fields (wallet_ref, reference_number)
+        // Priority: Payment Details > Wallet Ref > Reference Number
+        let eReceiptNote = receipt.description || receipt.wallet_ref || receipt.reference_number || "";
+        
+        // Clean up the note: Remove common prefixes like "Transfer to", "Payment to", "Recipient Reference:", etc.
+        if (eReceiptNote) {
+          eReceiptNote = eReceiptNote
+            .replace(/^(Transfer to|Payment to|Recipient Reference:|Payment Details:|Description:|Note:)\s*/i, "")
+            .trim();
+        }
+        
+        // Payment method is always "Bank" for e-receipts
+        const eReceiptPaymentMethod = "Bank";
+        
+        // Determine if this is income or expense based on amount sign
+        // Parse total as number to check sign (backend should preserve negative sign for expenses)
+        const amountValue = typeof total === "string" ? parseFloat(total) : total;
+        const isExpense = amountValue < 0;
+        const absoluteAmount = Math.abs(amountValue);
+        
+        // For e-receipts, infer category from transaction type or OCR text
+        let category = detectCategory(rawText) || "Others";
+        if (receipt.transaction_type) {
+          const txnType = receipt.transaction_type.toLowerCase();
+          if (txnType.includes("food") || txnType.includes("grab") || txnType.includes("foodpanda")) {
+            category = "Food";
+          } else if (txnType.includes("shopping") || txnType.includes("shopee") || txnType.includes("lazada")) {
+            category = "Shopping";
+          } else if (txnType.includes("transport") || txnType.includes("transportation")) {
+            category = "Transport";
+          }
+        }
+        
+        // For income, use appropriate income category
+        if (!isExpense) {
+          category = "Salary"; // Default income category, user can change
+        }
+
+        console.log("🏪 Merchant (from Transfer To):", eReceiptMerchant);
+        console.log("💰 Amount:", absoluteAmount);
+        console.log("📊 Type:", isExpense ? "Expense" : "Income");
+        console.log("🏷️ Category:", category);
+        console.log("🏦 Payment Method:", eReceiptPaymentMethod);
+        console.log("📝 Note (from Payment Details):", eReceiptNote);
+
+        // E-receipts go directly to AddRecord (no item selection)
+        // Pass the record type and absolute amount
         router.push({
           pathname: "/screen/AddRecord",
           params: {
-            amount: total.toString(),
+            amount: absoluteAmount.toString(),
             date,
-            note: (rawText as string).slice(0, 120),
+            note: eReceiptNote,
             category,
-            merchantName,
-            paymentMethod,
+            merchantName: eReceiptMerchant,
+            paymentMethod: eReceiptPaymentMethod,
+            recordType: isExpense ? "Expenses" : "Income", // Pass the type to AddRecord
           },
         });
+      } else {
+        // Physical receipt handling (existing logic)
+        const category = detectCategory(rawText);
+        const paymentMethod = detectPaymentMethod(rawText, receiptPaymentMethod);
+
+        console.log("🏷️ Category:", category);
+        console.log("🏦 Payment Method:", paymentMethod);
+
+        if (receipt.items && receipt.items.length > 0) {
+          router.push({
+            pathname: "/screen/SelectReceiptItems",
+            params: {
+              items: JSON.stringify(receipt.items),
+              merchant: merchantName,
+              date,
+              category,
+              paymentMethod,
+              subtotal: receipt.sub_total != null ? String(receipt.sub_total) : "",
+              serviceCharge: serviceCharge ? String(serviceCharge) : "",
+              tax: taxAmount ? String(taxAmount) : "",
+              grandTotal: String(total),
+            },
+          });
+        } else {
+          router.push({
+            pathname: "/screen/AddRecord",
+            params: {
+              amount: total.toString(),
+              date,
+              note: (rawText as string).slice(0, 120),
+              category,
+              merchantName,
+              paymentMethod,
+            },
+          });
+        }
       }
     } catch (error) {
       console.error("❌ Error processing receipt:", error);

@@ -302,7 +302,7 @@ export default function AddRecordSuccess() {
 
             <TouchableOpacity
               style={styles.secondaryBtn}
-              onPress={() => router.push("/screen/ExpensesDetail")}
+              onPress={() => router.push(isIncome ? "/screen/IncomeDetail" : "/screen/ExpensesDetail")}
               activeOpacity={0.7}
             >
                 <Ionicons name="list-outline" size={18} color="#1E3932" />

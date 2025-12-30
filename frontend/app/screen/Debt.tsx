@@ -175,6 +175,7 @@ function DebtRow({
   onEdit,
   onDelete,
   onAddPayment,
+  onViewDetails,
   currentMonthKey,
   currency,
 }: {
@@ -182,6 +183,7 @@ function DebtRow({
   onEdit: () => void;
   onDelete: () => void;
   onAddPayment: () => void;
+  onViewDetails: () => void;
   currentMonthKey: string;
   currency: Currency;
 }) {
@@ -189,9 +191,10 @@ function DebtRow({
   const progress = d.originalAmount > 0 ? ((d.originalAmount - d.currentBalance) / d.originalAmount) * 100 : 0;
   const monthsLeft = getMonthsRemaining(d.currentBalance, d.monthlyPayment);
   const paymentStatus = hasPaidThisMonth(d, currentMonthKey);
+  const isCompleted = d.currentBalance <= 0;
   
   return (
-    <View style={styles.debtCard}>
+    <View style={[styles.debtCard, isCompleted && styles.debtCardCompleted]}>
       {/* Header */}
       <View style={styles.debtHeader}>
         <View style={[styles.debtIcon, { backgroundColor: color + "22" }]}>
@@ -200,6 +203,12 @@ function DebtRow({
         <View style={{ flex: 1 }}>
           <Text style={styles.debtName}>{d.name || d.type}</Text>
           <Text style={styles.debtType}>{d.type}</Text>
+          {isCompleted && (
+            <View style={styles.completedChip}>
+              <Ionicons name="checkmark-circle" size={12} color="#15803D" />
+              <Text style={styles.completedChipText}>Completed</Text>
+            </View>
+          )}
         </View>
         <View style={styles.debtActions}>
           <TouchableOpacity onPress={onEdit} style={styles.actionBtn}>
@@ -294,7 +303,13 @@ function DebtRow({
       {/* Recent Payments */}
       {d.payments.length > 0 && (
         <View style={styles.paymentsSection}>
-          <Text style={styles.paymentsTitle}>Recent Payments</Text>
+          <View style={styles.paymentsHeader}>
+            <Text style={styles.paymentsTitle}>Recent Payments</Text>
+            <TouchableOpacity onPress={onViewDetails} style={styles.viewDetailsBtn}>
+              <Text style={styles.viewDetailsText}>View All</Text>
+              <Ionicons name="chevron-forward" size={14} color={BRAND_DARK} />
+            </TouchableOpacity>
+          </View>
           {d.payments.slice(0, 3).map((p) => (
             <View key={p.id} style={styles.paymentRow}>
               <Ionicons name="checkmark-circle" size={14} color={BRAND_GREEN} />
@@ -309,10 +324,17 @@ function DebtRow({
       )}
 
       {/* Add Payment Button */}
-      <TouchableOpacity onPress={onAddPayment} style={styles.addPaymentBtn}>
-        <Ionicons name="card-outline" size={18} color="#FFFFFF" />
-        <Text style={styles.addPaymentText}>Record Payment</Text>
-      </TouchableOpacity>
+      {!isCompleted ? (
+        <TouchableOpacity onPress={onAddPayment} style={styles.addPaymentBtn}>
+          <Ionicons name="card-outline" size={18} color="#FFFFFF" />
+          <Text style={styles.addPaymentText}>Record Payment</Text>
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity disabled style={[styles.addPaymentBtn, styles.addPaymentBtnDisabled]}>
+          <Ionicons name="checkmark-circle" size={18} color={MUTED} />
+          <Text style={[styles.addPaymentText, styles.addPaymentTextDisabled]}>Debt Completed</Text>
+        </TouchableOpacity>
+      )}
 
       {/* TEST: Notification Button (remove in production) */}
       {/* <TouchableOpacity
@@ -541,6 +563,108 @@ function DebtEditor({
   );
 }
 
+/* ---------- Debt Details Modal ---------- */
+function DebtDetailsModal({
+  open,
+  debt,
+  onClose,
+  currency,
+}: {
+  open: boolean;
+  debt: Debt | null;
+  onClose: () => void;
+  currency: Currency;
+}) {
+  if (!debt) return null;
+
+  const totalPaid = debt.originalAmount - debt.currentBalance;
+  const isCompleted = debt.currentBalance <= 0;
+  const sortedPayments = [...debt.payments].sort((a, b) => 
+    new Date(b.dateISO).getTime() - new Date(a.dateISO).getTime()
+  );
+
+  return (
+    <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.modalWrap}>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Payment History</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={22} color={BRAND_DARK} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={{ paddingBottom: 8 }}>
+            {/* Debt Info */}
+            <View style={styles.detailsDebtInfo}>
+              <Text style={styles.detailsDebtName}>{debt.name || debt.type}</Text>
+              <View style={styles.detailsDebtStats}>
+                <View style={styles.detailsStatItem}>
+                  <Text style={styles.detailsStatLabel}>Original Amount</Text>
+                  <Text style={styles.detailsStatValue}>{formatCurrency(debt.originalAmount, currency)}</Text>
+                </View>
+                <View style={styles.detailsStatDivider} />
+                <View style={styles.detailsStatItem}>
+                  <Text style={styles.detailsStatLabel}>Total Paid</Text>
+                  <Text style={[styles.detailsStatValue, { color: BRAND_GREEN }]}>
+                    {formatCurrency(totalPaid, currency)}
+                  </Text>
+                </View>
+                <View style={styles.detailsStatDivider} />
+                <View style={styles.detailsStatItem}>
+                  <Text style={styles.detailsStatLabel}>Current Balance</Text>
+                  <Text style={[styles.detailsStatValue, { color: isCompleted ? BRAND_GREEN : RED }]}>
+                    {formatCurrency(debt.currentBalance, currency)}
+                  </Text>
+                </View>
+              </View>
+              {isCompleted && (
+                <View style={styles.detailsCompletedBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color="#15803D" />
+                  <Text style={styles.detailsCompletedText}>Debt Fully Paid</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Payment History */}
+            <View style={styles.detailsSection}>
+              <Text style={styles.detailsSectionTitle}>
+                Payment History ({sortedPayments.length})
+              </Text>
+              {sortedPayments.length === 0 ? (
+                <View style={styles.detailsEmpty}>
+                  <Ionicons name="receipt-outline" size={32} color={MUTED} />
+                  <Text style={styles.detailsEmptyText}>No payments recorded yet</Text>
+                </View>
+              ) : (
+                sortedPayments.map((payment) => (
+                  <View key={payment.id} style={styles.detailsPaymentRow}>
+                    <View style={styles.detailsPaymentLeft}>
+                      <Ionicons name="checkmark-circle" size={18} color={BRAND_GREEN} />
+                      <View style={styles.detailsPaymentInfo}>
+                        <Text style={styles.detailsPaymentDate}>{formatDate(payment.dateISO)}</Text>
+                        {payment.note && (
+                          <Text style={styles.detailsPaymentNote}>{payment.note}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <Text style={styles.detailsPaymentAmount}>{formatCurrency(payment.amount, currency)}</Text>
+                  </View>
+                ))
+              )}
+            </View>
+          </ScrollView>
+
+          <TouchableOpacity onPress={onClose} style={styles.modalPrimary}>
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.modalPrimaryText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
 /* ---------- Payment Modal ---------- */
 function PaymentModal({
   open,
@@ -737,7 +861,15 @@ export default function Debt() {
   // Filter states
   const [filterType, setFilterType] = useState<DebtType | "All">("All");
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<"All" | "Paid" | "Unpaid">("All");
+  const [filterCompletionStatus, setFilterCompletionStatus] = useState<"All" | "Active" | "Completed">("All");
   const [showFilterModal, setShowFilterModal] = useState(false);
+
+  // Details modal state
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedDebt, setSelectedDebt] = useState<Debt | null>(null);
+
+  // Show/hide completed debts state
+  const [showCompletedDebts, setShowCompletedDebts] = useState(true);
 
   // resolve user id and subscribe to debts
   useEffect(() => {
@@ -747,6 +879,12 @@ export default function Debt() {
         const uid = stored || auth.currentUser?.uid || null;
         if (uid && !stored) await AsyncStorage.setItem("userId", uid);
         setUserId(uid);
+
+        // Load showCompletedDebts preference
+        const showCompleted = await AsyncStorage.getItem("showCompletedDebts");
+        if (showCompleted !== null) {
+          setShowCompletedDebts(showCompleted === "true");
+        }
 
         // if no user ID at all, stop loading so screen can render
         if (!uid) {
@@ -758,6 +896,13 @@ export default function Debt() {
       }
     })();
   }, []);
+
+  // Save showCompletedDebts preference when it changes
+  useEffect(() => {
+    AsyncStorage.setItem("showCompletedDebts", String(showCompletedDebts)).catch((e) => {
+      console.error("Failed to save showCompletedDebts preference", e);
+    });
+  }, [showCompletedDebts]);
 
   // Subscribe to currency
   useEffect(() => {
@@ -846,16 +991,30 @@ export default function Debt() {
     };
   }, [debts, monthlyIncome]);
 
-  /* ----- Filtered Debts ----- */
-  const filteredDebts = useMemo(() => {
-    let filtered = [...debts];
+  /* ----- Split Debts into Active and Completed ----- */
+  const activeDebts = useMemo(() => {
+    return debts.filter(d => d.currentBalance > 0);
+  }, [debts]);
+
+  const completedDebts = useMemo(() => {
+    return debts.filter(d => d.currentBalance <= 0);
+  }, [debts]);
+
+  /* ----- Filtered Active Debts ----- */
+  const filteredActiveDebts = useMemo(() => {
+    let filtered = [...activeDebts];
 
     // Filter by type
     if (filterType !== "All") {
       filtered = filtered.filter(d => d.type === filterType);
     }
 
-    // Filter by payment status
+    // Filter by completion status - if "Completed" is selected, return empty for active
+    if (filterCompletionStatus === "Completed") {
+      return [];
+    }
+
+    // Filter by payment status (only applies to active debts)
     if (filterPaymentStatus !== "All") {
       filtered = filtered.filter(d => {
         const status = hasPaidThisMonth(d, monthKey);
@@ -868,7 +1027,24 @@ export default function Debt() {
     }
 
     return filtered;
-  }, [debts, filterType, filterPaymentStatus, monthKey]);
+  }, [activeDebts, filterType, filterPaymentStatus, filterCompletionStatus, monthKey]);
+
+  /* ----- Filtered Completed Debts ----- */
+  const filteredCompletedDebts = useMemo(() => {
+    let filtered = [...completedDebts];
+
+    // Filter by type
+    if (filterType !== "All") {
+      filtered = filtered.filter(d => d.type === filterType);
+    }
+
+    // Filter by completion status - if "Active" is selected, return empty for completed
+    if (filterCompletionStatus === "Active") {
+      return [];
+    }
+
+    return filtered;
+  }, [completedDebts, filterType, filterCompletionStatus]);
 
   /* ----- Actions (Firestore) ----- */
   const openAdd = () => { setEditing(null); setEditorOpen(true); };
@@ -919,6 +1095,11 @@ export default function Debt() {
   const openPaymentModal = (d: Debt) => {
     setPaymentDebt(d);
     setPaymentModalOpen(true);
+  };
+
+  const openDetailsModal = (d: Debt) => {
+    setSelectedDebt(d);
+    setDetailsModalOpen(true);
   };
 
   const savePayment = (debtId: string, payment: Payment) => {
@@ -1237,10 +1418,10 @@ export default function Debt() {
           </View>
         )}
 
-        {/* Debts List */}
+        {/* Active Debts List */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Your Debts ({filteredDebts.length})</Text>
+            <Text style={styles.sectionTitle}>Active Debts ({filteredActiveDebts.length})</Text>
             <TouchableOpacity
               onPress={() => setShowFilterModal(true)}
               style={styles.filterButton}
@@ -1252,13 +1433,21 @@ export default function Debt() {
           </View>
 
           {/* Active Filters Display */}
-          {(filterType !== "All" || filterPaymentStatus !== "All") && (
+          {(filterType !== "All" || filterPaymentStatus !== "All" || filterCompletionStatus !== "All") && (
             <View style={styles.activeFiltersContainer}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
                 {filterType !== "All" && (
                   <View style={styles.activeFilterChip}>
                     <Text style={styles.activeFilterText}>Type: {filterType}</Text>
                     <TouchableOpacity onPress={() => setFilterType("All")}>
+                      <Ionicons name="close-circle" size={16} color={MUTED} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {filterCompletionStatus !== "All" && (
+                  <View style={styles.activeFilterChip}>
+                    <Text style={styles.activeFilterText}>Completion: {filterCompletionStatus}</Text>
+                    <TouchableOpacity onPress={() => setFilterCompletionStatus("All")}>
                       <Ionicons name="close-circle" size={16} color={MUTED} />
                     </TouchableOpacity>
                   </View>
@@ -1275,6 +1464,7 @@ export default function Debt() {
                   onPress={() => {
                     setFilterType("All");
                     setFilterPaymentStatus("All");
+                    setFilterCompletionStatus("All");
                   }}
                   style={styles.clearAllButton}
                 >
@@ -1292,28 +1482,58 @@ export default function Debt() {
                 <Text style={styles.emptyText}>Tap the + button to add a debt you want to track</Text>
               </View>
             </View>
-          ) : filteredDebts.length === 0 ? (
+          ) : filteredActiveDebts.length === 0 && (filterCompletionStatus === "All" || filterCompletionStatus === "Active") ? (
             <View style={styles.card}>
               <View style={styles.empty}>
                 <Ionicons name="search-outline" size={56} color={MUTED} />
-                <Text style={styles.emptyTitle}>No debts match your filters</Text>
+                <Text style={styles.emptyTitle}>No active debts match your filters</Text>
                 <Text style={styles.emptyText}>Try adjusting your filter options</Text>
               </View>
             </View>
           ) : (
-            filteredDebts.map((d) => (
+            filteredActiveDebts.map((d) => (
               <DebtRow
                 key={d.id}
                 d={d}
                 onEdit={() => openEdit(d)}
                 onDelete={() => deleteDebt(d.id)}
                 onAddPayment={() => openPaymentModal(d)}
+                onViewDetails={() => openDetailsModal(d)}
                 currentMonthKey={monthKey}
                 currency={currency}
               />
             ))
           )}
         </View>
+
+        {/* Completed Debts List */}
+        {(filterCompletionStatus === "All" || filterCompletionStatus === "Completed") && completedDebts.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Completed Debts ({filteredCompletedDebts.length})</Text>
+              <TouchableOpacity
+                onPress={() => setShowCompletedDebts(!showCompletedDebts)}
+                style={styles.toggleButton}
+              >
+                <Text style={styles.toggleButtonText}>{showCompletedDebts ? "Hide" : "Show"}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {showCompletedDebts &&
+              filteredCompletedDebts.map((d) => (
+                <DebtRow
+                  key={d.id}
+                  d={d}
+                  onEdit={() => openEdit(d)}
+                  onDelete={() => deleteDebt(d.id)}
+                  onAddPayment={() => openPaymentModal(d)}
+                  onViewDetails={() => openDetailsModal(d)}
+                  currentMonthKey={monthKey}
+                  currency={currency}
+                />
+              ))}
+          </View>
+        )}
       </ScrollView>
 
       <DebtEditor
@@ -1328,6 +1548,16 @@ export default function Debt() {
         debt={paymentDebt}
         onClose={() => setPaymentModalOpen(false)}
         onSave={savePayment}
+        currency={currency}
+      />
+
+      <DebtDetailsModal
+        open={detailsModalOpen}
+        debt={selectedDebt}
+        onClose={() => {
+          setDetailsModalOpen(false);
+          setSelectedDebt(null);
+        }}
         currency={currency}
       />
 
@@ -1363,6 +1593,27 @@ export default function Debt() {
                           />
                         )}
                         <Text style={[styles.typeChipText, active && { color: "#fff" }]}>{t}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Filter by Completion Status */}
+              <View style={{ marginTop: 20 }}>
+                <Text style={styles.inputLabel}>Filter by Completion</Text>
+                <View style={styles.filterOptionRow}>
+                  {(["All", "Active", "Completed"] as const).map((status) => {
+                    const active = filterCompletionStatus === status;
+                    return (
+                      <TouchableOpacity
+                        key={status}
+                        onPress={() => setFilterCompletionStatus(status)}
+                        style={[styles.filterOption, active && styles.filterOptionActive]}
+                      >
+                        {status === "Active" && <Ionicons name="hourglass-outline" size={16} color={active ? "#fff" : MUTED} />}
+                        {status === "Completed" && <Ionicons name="checkmark-circle" size={16} color={active ? "#fff" : BRAND_GREEN} />}
+                        <Text style={[styles.filterOptionText, active && { color: "#fff" }]}>{status}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -1579,6 +1830,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   filterButtonText: {
+    color: BRAND_DARK,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  toggleButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: "#F0FDF4",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#D1FAE5",
+  },
+  toggleButtonText: {
     color: BRAND_DARK,
     fontSize: 13,
     fontWeight: "700",
@@ -2156,6 +2420,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
+  debtCardCompleted: {
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1.5,
+    borderColor: "#86EFAC",
+  },
   debtHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -2179,6 +2448,22 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: MUTED,
     marginTop: 2,
+  },
+  completedChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    alignSelf: "flex-start",
+    marginTop: 6,
+    backgroundColor: "#D1FAE5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  completedChipText: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#15803D",
   },
   debtActions: {
     flexDirection: "row",
@@ -2299,12 +2584,27 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 8,
   },
+  paymentsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
   paymentsTitle: {
     fontSize: 11,
     fontWeight: "800",
     color: BRAND_DARK,
-    marginBottom: 6,
     textTransform: "uppercase",
+  },
+  viewDetailsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  viewDetailsText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: BRAND_DARK,
   },
   paymentRow: {
     flexDirection: "row",
@@ -2341,10 +2641,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     ...shadow(2, 0.15),
   },
+  addPaymentBtnDisabled: {
+    backgroundColor: "#E5E7EB",
+    ...shadow(0, 0),
+  },
   addPaymentText: {
     color: "#fff",
     fontWeight: "900",
     fontSize: 13,
+  },
+  addPaymentTextDisabled: {
+    color: MUTED,
   },
 
   empty: { 
@@ -2522,6 +2829,116 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
     color: "#EF4444",
+  },
+
+  // Debt Details Modal Styles
+  detailsDebtInfo: {
+    backgroundColor: "#F7FAF9",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  detailsDebtName: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: BRAND_DARK,
+    marginBottom: 12,
+  },
+  detailsDebtStats: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+  },
+  detailsStatItem: {
+    flex: 1,
+  },
+  detailsStatDivider: {
+    width: 1,
+    backgroundColor: LINE_SOFT,
+    marginHorizontal: 10,
+  },
+  detailsStatLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: MUTED,
+    marginBottom: 4,
+  },
+  detailsStatValue: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: BRAND_DARK,
+  },
+  detailsCompletedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    backgroundColor: "#D1FAE5",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  detailsCompletedText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+  detailsSection: {
+    marginTop: 8,
+  },
+  detailsSectionTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: BRAND_DARK,
+    marginBottom: 12,
+  },
+  detailsPaymentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  detailsPaymentLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  detailsPaymentInfo: {
+    flex: 1,
+  },
+  detailsPaymentDate: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: BRAND_DARK,
+    marginBottom: 2,
+  },
+  detailsPaymentNote: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: MUTED,
+  },
+  detailsPaymentAmount: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: BRAND_GREEN,
+  },
+  detailsEmpty: {
+    alignItems: "center",
+    paddingVertical: 32,
+    gap: 8,
+  },
+  detailsEmptyText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: MUTED,
   },
 });
 

@@ -68,6 +68,9 @@ export default function BudgetAllocationScreen() {
   const [percentages, setPercentages] = useState<Record<string, number>>({});
   const [allocations, setAllocations] = useState<Record<string, number>>({});
   const [editMode, setEditMode] = useState<Record<string, boolean>>({});
+  // Track raw input strings for percentage and amount while editing
+  const [percentInputs, setPercentInputs] = useState<Record<string, string>>({});
+  const [amountInputs, setAmountInputs] = useState<Record<string, string>>({});
   const [isEditable, setIsEditable] = useState(true);
   const [existingBudget, setExistingBudget] = useState<BudgetRecord | null>(null);
 
@@ -173,6 +176,10 @@ export default function BudgetAllocationScreen() {
         setAllocations({});
         setEditMode({});
       }
+      
+      // Clear input states when loading new month
+      setPercentInputs({});
+      setAmountInputs({});
 
       // Determine mode + editability by month selection
       const rel = cmpMonthKey(mk, todayKey);
@@ -240,6 +247,12 @@ export default function BudgetAllocationScreen() {
     const parts = cleaned.split(".");
     if (parts.length > 2) return;
 
+    // Store raw input for editing
+    setPercentInputs((prev) => ({
+      ...prev,
+      [category]: cleaned,
+    }));
+
     const newPercent = Math.min(Math.max(parseFloat(cleaned) || 0, 0), 100);
     if (newPercent < 0 || newPercent > 100) return;
 
@@ -254,6 +267,11 @@ export default function BudgetAllocationScreen() {
         ...prev,
         [category]: Math.round((total * newPercent) / 100 * 100) / 100,
       }));
+      // Update amount input to match
+      setAmountInputs((prev) => ({
+        ...prev,
+        [category]: String(Math.round((total * newPercent) / 100 * 100) / 100),
+      }));
     }
   };
 
@@ -262,6 +280,12 @@ export default function BudgetAllocationScreen() {
     const cleaned = value.replace(/[^0-9.]/g, "");
     const parts = cleaned.split(".");
     if (parts.length > 2) return;
+
+    // Store raw input for editing
+    setAmountInputs((prev) => ({
+      ...prev,
+      [category]: cleaned,
+    }));
 
     const newAmount = parseFloat(cleaned) || 0;
     const normalizedAmount = Math.round(newAmount * 100) / 100;
@@ -273,6 +297,11 @@ export default function BudgetAllocationScreen() {
       setPercentages((prev) => ({
         ...prev,
         [category]: Math.round(newPercent * 100) / 100,
+      }));
+      // Update percent input to match
+      setPercentInputs((prev) => ({
+        ...prev,
+        [category]: String(Math.round(newPercent * 100) / 100),
       }));
     }
 
@@ -686,7 +715,32 @@ export default function BudgetAllocationScreen() {
                       <TouchableOpacity
                         onPress={() => {
                           if (!isEditable) return;
-                          setEditMode((prev) => ({ ...prev, [category]: !prev[category] }));
+                          const willBeEditing = !isEditing;
+                          setEditMode((prev) => ({ ...prev, [category]: willBeEditing }));
+                          
+                          // Initialize input values when entering edit mode
+                          if (willBeEditing) {
+                            setPercentInputs((prev) => ({
+                              ...prev,
+                              [category]: percent > 0 ? String(percent) : "",
+                            }));
+                            setAmountInputs((prev) => ({
+                              ...prev,
+                              [category]: amount > 0 ? String(amount) : "",
+                            }));
+                          } else {
+                            // Clear input values when exiting edit mode
+                            setPercentInputs((prev) => {
+                              const next = { ...prev };
+                              delete next[category];
+                              return next;
+                            });
+                            setAmountInputs((prev) => {
+                              const next = { ...prev };
+                              delete next[category];
+                              return next;
+                            });
+                          }
                         }}
                         style={[styles.rowEditBtn, !isEditable && styles.editButtonDisabled]}
                         disabled={!isEditable}
@@ -708,22 +762,26 @@ export default function BudgetAllocationScreen() {
                       <Text style={styles.inputLabel}>%</Text>
                       <TextInput
                         style={[styles.inputField, !isEditable && styles.inputDisabled]}
-                        value={percent.toFixed(2)}
+                        value={percentInputs[category] !== undefined ? percentInputs[category] : (percent > 0 ? String(percent) : "")}
                         onChangeText={(v) => handlePercentageChange(category, v)}
                         keyboardType="decimal-pad"
                         editable={isEditable}
                         selectTextOnFocus={isEditable}
+                        placeholder="0"
+                        placeholderTextColor="#9ca3af"
                       />
                     </View>
                     <View style={styles.inputGroup}>
                       <Text style={styles.inputLabel}>RM</Text>
                       <TextInput
                         style={[styles.inputField, !isEditable && styles.inputDisabled]}
-                        value={amount.toFixed(2)}
+                        value={amountInputs[category] !== undefined ? amountInputs[category] : (amount > 0 ? String(amount) : "")}
                         onChangeText={(v) => handleAllocationChange(category, v)}
                         keyboardType="decimal-pad"
                         editable={isEditable}
                         selectTextOnFocus={isEditable}
+                        placeholder="0"
+                        placeholderTextColor="#9ca3af"
                       />
                     </View>
                   </View>

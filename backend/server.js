@@ -342,39 +342,72 @@ app.post("/ocr/receipt", upload.single("file"), async (req, res) => {
     const base64Image = fileToBase64(filePath);
 
     const systemPrompt = `
-You are a receipt OCR and parser. You will be given an image of a shopping or payment receipt.
+You are a receipt OCR and parser. You will be given an image of either:
+1. A physical shopping/payment receipt (from stores, restaurants, etc.)
+2. An e-receipt/digital transaction receipt (from apps like TNG, Grab, Shopee, etc.)
+
+FIRST, determine the receipt type by looking for:
+- E-receipt indicators: "Transaction", "Transfer", "Payment Details", "Transaction No.", "Wallet Ref", "Status: Successful", app names like "TNG", "Grab", "Shopee", etc.
+- Physical receipt indicators: itemized lists, "Subtotal", "Total", store names, printed receipts
+
 Extract the key structured data and return it as strict JSON with this shape:
 {
   "receipts": [
     {
-      "total": number | null,          // final amount customer pays (includes tax & service)
-      "totalInclTax": number | null,   // alias for total, may be same as total
-      "sub_total": number | null,      // items total BEFORE any tax/service (sum of line items)
-      "service_charge": number | null, // total service charge on the bill
-      "tax": number | null,            // total SST/GST/VAT or similar tax
+      "receipt_type": "physical" | "e-receipt",  // CRITICAL: Identify the type
+      "total": number | null,          // final amount (for physical: includes tax & service; for e-receipt: transaction amount)
+      "totalInclTax": number | null,   // alias for total
+      "sub_total": number | null,      // items total BEFORE any tax/service (physical receipts only)
+      "service_charge": number | null, // total service charge (physical receipts only)
+      "tax": number | null,            // total SST/GST/VAT (physical receipts only)
       "date": string | null,          // CRITICAL: Extract the receipt date in any format (DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, or text like "Dec 17, 2025"). If no date is visible, return null.
+      "date_time": string | null,      // Full date and time if available (e-receipts often have timestamps)
       "ocr_text": string,
       "merchant_name": string | null,
       "payment_method": string | null,
+      
+      // E-RECEIPT SPECIFIC FIELDS (only populate if receipt_type is "e-receipt")
+      "transaction_type": string | null,     // e.g., "Transfer to Wallet", "Payment", "Top Up", "Purchase"
+      "transaction_status": string | null,   // e.g., "Successful", "Completed", "Pending"
+      "recipient": string | null,            // Recipient name or account (for transfers)
+      "sender": string | null,               // Sender name or account
+      "transaction_number": string | null,    // Transaction ID/Reference number
+      "wallet_ref": string | null,           // Wallet reference number
+      "reference_number": string | null,     // Any other reference number
+      "description": string | null,          // Transaction description or note (e.g., if OCR shows "Payment Details\nPutien", extract "Putien"; if "Recipient Reference\nLens", extract "Lens")
+      
+      // PHYSICAL RECEIPT SPECIFIC FIELDS (only populate if receipt_type is "physical")
       "items": [
         {
-          "description": string,
-          "quantity": number | null,    // CRITICAL: Extract the quantity for each item. If receipt shows "2x Bread" or "Bread x2" or "Bread 2", set quantity to 2. If no quantity shown, set to 1 (not null).
-          "unit_price": number | null,
-          "amount": number | null      // line total = quantity * unit_price
+          "description": string,       // Item name (e.g., "425 TK Shredded Chicken Hor Fun" or "Item Name")
+          "quantity": number | null,    // CRITICAL: Extract the quantity for each item. If receipt shows "1x", "2x", "2x Bread" or "Bread x2" or "Bread 2", extract the number. If no quantity shown, set to 1 (not null).
+          "unit_price": number | null, // Price per single unit (e.g., if "1x Item RM10.00", unit_price = 10.00)
+          "amount": number | null      // line total = quantity * unit_price (e.g., if "1x Item RM10.00", amount = 10.00; if "2x Item RM20.00", amount = 20.00)
         }
       ]
     }
   ]
 }
 
+RECEIPT TYPE DETECTION RULES (CRITICAL):
+- If you see "Transaction", "Transfer", "Payment Details", "Transaction No.", "Wallet Ref", "Status:", app logos (TNG, Grab, Shopee, etc.), or digital transaction layouts → set receipt_type to "e-receipt"
+- If you see itemized lists, "Subtotal", "Total", store names, printed receipt layouts → set receipt_type to "physical"
+- When receipt_type is "e-receipt", focus on transaction fields (transaction_type, recipient, transaction_number, etc.)
+- When receipt_type is "physical", focus on item extraction and tax breakdown
+
 VERY IMPORTANT RULES ABOUT TOTAL (CRITICAL):
-- Always set "total" to the FINAL amount the customer must pay, INCLUDING all SST/tax, service charges, and fees.
-- Look for the line that says "Total", "Grand Total", "Net Total", "Amount Due", or "Payable" - this is usually at the bottom of the receipt.
-- If the receipt shows both "SubTotal" and "Net Total" / "Grand Total" / "Total", choose the LAST/BOTTOM one that includes taxes and service.
-- If you see lines like "Service Charge", "SST", "GST", "Tax", "Service", make sure they are INCLUDED in the "total" value.
-- Double-check: total should equal sub_total + service_charge + tax (if all are present).
-- Only use a subtotal (before tax) when no final total including tax appears anywhere.
+- For PHYSICAL receipts: Always set "total" to the FINAL amount the customer must pay, INCLUDING all SST/tax, service charges, and fees.
+  - Look for the line that says "Total", "Grand Total", "Net Total", "Amount Due", or "Payable" - this is usually at the bottom of the receipt.
+  - If the receipt shows both "SubTotal" and "Net Total" / "Grand Total" / "Total", choose the LAST/BOTTOM one that includes taxes and service.
+  - If you see lines like "Service Charge", "SST", "GST", "Tax", "Service", make sure they are INCLUDED in the "total" value.
+  - Double-check: total should equal sub_total + service_charge + tax (if all are present).
+- For E-RECEIPTS: Extract the transaction amount (usually shown as "-RM10.50" for debits or "+RM10.50" for credits)
+  - Look for "Amount", "Transaction Amount", or the main amount displayed
+  - CRITICAL: Preserve the sign of the amount:
+    * If amount shows "-RM10.50" or "-10.50" → extract as negative number: -10.50 (this is an EXPENSE)
+    * If amount shows "+RM10.50" or "+10.50" or just "RM10.50" (positive) → extract as positive number: 10.50 (this is INCOME)
+  - The sign indicates transaction type: negative = expense (money going out), positive = income (money coming in)
+  - Extract the numeric value WITH its sign preserved
 - Be very careful with decimal places and currency symbols (RM, $, etc.) - extract the exact numeric value.
 
 TAX BREAKDOWN RULES:
@@ -387,20 +420,72 @@ TAX BREAKDOWN RULES:
 
 DATE EXTRACTION RULES (CRITICAL):
 - Look for date fields like "Date:", "Transaction Date:", "Issued:", "Printed:", "Date/Time:", or dates near the top/bottom of receipt
+- For e-receipts: Look for "Date/Time:" fields which often show full timestamps like "29/12/2025 19:11:53"
 - Common formats: DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD, or text like "14 Dec 2023", "Dec 14, 2023", "December 14, 2023", "14/12/2023"
 - Look for timestamps too - they often contain dates: "Dec 14, 2023 9:18 AM" should extract "14 Dec 2023" or "Dec 14, 2023"
+- For e-receipts with timestamps: Extract both "date" (date only) and "date_time" (full timestamp if available)
 - If you see a date anywhere on the receipt (even in a timestamp), extract it. Only return null if absolutely no date is visible.
 - Preserve the original format as a string (don't convert to ISO unless it's already ISO)
 - Be careful with year - if you see "2023" extract it as "2023", not "2025"
 
+E-RECEIPT EXTRACTION RULES (when receipt_type is "e-receipt"):
+- Extract "transaction_type" from fields like "Transaction Type:", "Type:", or from context (e.g., "Transfer to Wallet", "Payment", "Top Up")
+- Extract "transaction_status" from "Status:" field (e.g., "Successful", "Completed", "Pending")
+- Extract "recipient" from "Transfer To:", "Recipient:", "To:", or recipient name fields
+- Extract "sender" from "Transfer From:", "Sender:", "From:", or sender name fields (if visible)
+- Extract "transaction_number" from "Transaction No.:", "Transaction ID:", "Txn ID:", or similar fields
+- Extract "wallet_ref" from "Wallet Ref:", "Reference:", or long reference numbers
+- Extract "reference_number" from any other reference number fields
+- Extract "description" from "Payment Details:", "Description:", "Note:", "Recipient Reference:" fields
+  - CRITICAL: Extract ONLY the value itself, NOT the field label or prefix
+  - Look for the text that appears IMMEDIATELY AFTER "Payment Details" on the next line or after the colon
+  - EXAMPLES:
+    * If OCR shows "Payment Details\nPutien" → description MUST be "Putien" (the text on the line immediately after "Payment Details")
+    * If OCR shows "Payment Details: Photo" → description MUST be "Photo" (the text after the colon)
+    * If OCR shows "Recipient Reference\nLens" → description MUST be "Lens" (the text on the line immediately after "Recipient Reference")
+    * If OCR shows "Recipient Reference: Lens" → description MUST be "Lens" (the text after the colon)
+  - When you see "Payment Details" followed by a newline and then text (like "Putien"), that text IS the description value
+  - When you see "Recipient Reference" followed by a newline and then text (like "Lens"), that text IS the description value
+  - Do NOT add prefixes like "Transfer to", "Payment to", etc. - extract the raw value only
+  - Do NOT confuse "Payment Details" with "Payment Method" - they are different fields
+  - IMPORTANT: The description field should contain meaningful transaction details (like merchant names, item descriptions), NOT reference numbers (use wallet_ref for those)
+  - If you see "Payment Details" in the OCR text, you MUST look for the value on the line immediately following it
+- For merchant_name: Use the app/service name (TNG, Grab, etc.) or recipient name if it's a transfer
+- For payment_method: Extract from "Payment Method:", "Method:", or infer from context (e.g., "eWallet Balance", "Credit Card")
+
 QUANTITY EXTRACTION RULES (CRITICAL):
-- For each item, look for quantity indicators: "2x", "x2", "2 pcs", "Qty: 2", or numbers before/after item names
+- For each item, look for quantity indicators: "1x", "2x", "x2", "2 pcs", "Qty: 2", or numbers before/after item names
+- CRITICAL: "1x" means quantity = 1, "2x" means quantity = 2, etc.
 - If an item shows "2 Bread" or "Bread 2" or "2x Bread" or "Bread x2", set quantity to 2
+- If an item shows "1x [anything]" (e.g., "1x 425 TK Shredded Chicken Hor Fun"), set quantity = 1
 - If the SAME item appears multiple times on separate lines (e.g., "M1 Hot RM3.70" appears twice), combine them into ONE item with quantity = number of occurrences
 - If no quantity is shown for an item, set quantity to 1 (NOT null)
 - The amount field should be the total line amount (quantity * unit_price)
 - If an item line shows "1x Item RM10.00", then quantity=1, unit_price=10.00, amount=10.00
 - If an item line shows "2x Item RM20.00", then quantity=2, unit_price=10.00, amount=20.00
+
+ITEM AMOUNT EXTRACTION RULES (CRITICAL):
+- The "amount" field is the LINE TOTAL (the total price for that item line, including quantity)
+- The "unit_price" field is the price per single unit/item
+- ALWAYS extract both "amount" and "unit_price" for each item - do NOT leave them as null if prices are visible
+- Common receipt formats:
+  * "Item Name     RM10.00" → description="Item Name", unit_price=10.00, amount=10.00, quantity=1
+  * "1x Item Name  RM10.00" → description="Item Name", unit_price=10.00, amount=10.00, quantity=1
+  * "2x Item Name  RM20.00" → description="Item Name", unit_price=10.00, amount=20.00, quantity=2
+  * "Item Name     2 @ RM5.00 = RM10.00" → description="Item Name", unit_price=5.00, amount=10.00, quantity=2
+  * "Item Name     Qty: 3    RM15.00" → description="Item Name", unit_price=5.00, amount=15.00, quantity=3
+- Look for prices in various positions: right-aligned, after item name, in a separate column
+- If you see a price on the same line as an item (especially right-aligned), that IS the line total (amount field)
+- CRITICAL: When you see "1x Item Name RM9.50", extract:
+  * quantity = 1 (from "1x")
+  * description = "Item Name" (the item name, without the "1x" prefix)
+  * amount = 9.50 (the price on the same line, right-aligned)
+  * unit_price = 9.50 (same as amount when quantity is 1)
+- If an item has sub-details or additional lines below it (like codes, modifiers, or "- Take Away"), IGNORE those lines for amount extraction - use the price from the MAIN item line
+- If quantity > 1, calculate unit_price = amount / quantity
+- If quantity = 1, unit_price = amount
+- CRITICAL: If prices are visible on the receipt (even if right-aligned), you MUST extract them - do not return null for amount or unit_price
+- CRITICAL: Right-aligned prices at the end of item lines are the line totals - extract them as the "amount" field
 
 ITEM EXTRACTION RULES (CRITICAL):
 - Extract each distinct item as a separate entry in the items array
@@ -409,6 +494,21 @@ ITEM EXTRACTION RULES (CRITICAL):
   b) Part of the parent item description (if they're just modifiers without separate pricing)
 - Group related items together when they appear to be part of the same order line
 - Be careful not to duplicate items that appear multiple times - combine them with correct quantity instead
+- For each item line, you MUST extract: description, quantity, unit_price, and amount
+
+SPECIFIC FORMAT HANDLING (CRITICAL):
+- If you see items with format "1x [CODE] [ITEM NAME] RM[PRICE]" (e.g., "1x 425 TK Shredded Chicken Hor Fun RM9.50"):
+  * Extract quantity = 1 (from "1x")
+  * Extract description = "[CODE] [ITEM NAME]" (include the code and full item name, e.g., "425 TK Shredded Chicken Hor Fun")
+  * Extract amount = [PRICE] (the RM value at the end, e.g., 9.50)
+  * Extract unit_price = [PRICE] (same as amount when quantity is 1)
+  * CRITICAL: The price at the END of the line (right-aligned) is the line total - extract it as "amount"
+- If items have sub-details or additional lines below them (like item codes, modifiers, "- Take Away", etc.):
+  * IGNORE those sub-details when extracting the main item price
+  * Use ONLY the price from the MAIN item line (the line with "1x" or quantity prefix)
+  * Do NOT extract prices from sub-detail lines unless they represent separate items
+- Right-aligned prices are ALWAYS the line totals - extract them as the "amount" field
+- Item codes (like "425", "406") are part of the description, NOT prices - do not confuse them with amounts
 
 CALCULATION VERIFICATION:
 - For each item: verify that amount = quantity * unit_price (or very close, allowing for rounding)
@@ -420,7 +520,19 @@ General rules:
 - Always include at least one object in "receipts".
 - Always include "ocr_text" with all text you can reasonably read.
 - Double-check all numbers for accuracy - OCR can misread digits (0 vs O, 1 vs I, 5 vs S, etc.)
-- ONLY output valid JSON, no extra commentary.`;
+- For e-receipts: If items array is not applicable, set it to empty array []
+- For physical receipts: Always try to extract items if visible
+- CRITICAL JSON OUTPUT RULES:
+  * Output ONLY valid JSON - no extra text, no markdown, no code blocks
+  * Escape all special characters in strings (quotes, newlines, backslashes)
+  * Use double quotes for all strings and keys
+  * Do NOT include any text before or after the JSON object
+  * Ensure all strings are properly closed
+  * The response must start with { and end with }
+  * If a string contains quotes, escape them with backslash: \"
+  * If a string contains newlines, escape them as \\n
+  * Example: "description": "Item with \"quotes\" and\\nnewline" is valid
+- ONLY output valid JSON, no extra commentary, no markdown formatting.`;
 
     let parsed;
     try {
@@ -446,11 +558,57 @@ General rules:
           },
         ],
         temperature: 0,
-        max_tokens: 700,
+        max_tokens: 2000, // Increased for complex receipts with many items
       });
 
       const raw = response.choices[0]?.message?.content || "{}";
-      parsed = JSON.parse(raw);
+      
+      // Try to extract JSON from the response (in case there's extra text)
+      let jsonString = raw.trim();
+      
+      // If the response doesn't start with {, try to find the JSON object
+      if (!jsonString.startsWith("{")) {
+        const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          jsonString = jsonMatch[0];
+        }
+      }
+      
+      // Sanitize the JSON string - escape unescaped quotes and newlines in strings
+      // This is a simple fix - for production, consider using a more robust JSON repair library
+      try {
+        parsed = JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error("❌ JSON Parse Error - Raw response:", raw.substring(0, 500));
+        console.error("❌ JSON Parse Error - Attempted JSON:", jsonString.substring(0, 500));
+        console.error("❌ JSON Parse Error Details:", parseError.message);
+        
+        // Try to fix common JSON issues
+        try {
+          // Remove any trailing commas before closing braces/brackets
+          let fixedJson = jsonString.replace(/,(\s*[}\]])/g, "$1");
+          // Try to close unclosed strings (basic attempt)
+          fixedJson = fixedJson.replace(/([^\\])"([^"]*)$/gm, '$1"$2"');
+          parsed = JSON.parse(fixedJson);
+          console.log("✅ Fixed JSON parsing issue");
+        } catch (fixError) {
+          // If still fails, return a default structure
+          console.error("❌ Could not fix JSON, using default structure");
+          parsed = {
+            receipts: [{
+              receipt_type: "physical",
+              total: null,
+              totalInclTax: null,
+              date: null,
+              date_time: null,
+              ocr_text: raw.substring(0, 1000), // Include raw text as fallback
+              merchant_name: null,
+              payment_method: null,
+              items: []
+            }]
+          };
+        }
+      }
     } catch (err) {
       console.error("❌ OpenAI OCR error:", err.response?.data || err.message || err);
       return res.status(500).json({ error: "Failed to process receipt with OpenAI" });
@@ -463,15 +621,49 @@ General rules:
     if (!parsed.receipts || !Array.isArray(parsed.receipts) || parsed.receipts.length === 0) {
       parsed.receipts = [
         {
+          receipt_type: "physical",
           total: null,
           totalInclTax: null,
           date: null,
+          date_time: null,
           ocr_text: "",
           merchant_name: null,
           payment_method: null,
+          transaction_type: null,
+          transaction_status: null,
+          recipient: null,
+          sender: null,
+          transaction_number: null,
+          wallet_ref: null,
+          reference_number: null,
+          description: null,
           items: [],
         },
       ];
+    } else {
+      // Ensure all receipts have the receipt_type field
+      parsed.receipts = parsed.receipts.map((receipt) => ({
+        receipt_type: receipt.receipt_type || "physical", // Default to physical if not specified
+        total: receipt.total ?? null,
+        totalInclTax: receipt.totalInclTax ?? null,
+        sub_total: receipt.sub_total ?? null,
+        service_charge: receipt.service_charge ?? null,
+        tax: receipt.tax ?? null,
+        date: receipt.date ?? null,
+        date_time: receipt.date_time ?? null,
+        ocr_text: receipt.ocr_text || "",
+        merchant_name: receipt.merchant_name ?? null,
+        payment_method: receipt.payment_method ?? null,
+        transaction_type: receipt.transaction_type ?? null,
+        transaction_status: receipt.transaction_status ?? null,
+        recipient: receipt.recipient ?? null,
+        sender: receipt.sender ?? null,
+        transaction_number: receipt.transaction_number ?? null,
+        wallet_ref: receipt.wallet_ref ?? null,
+        reference_number: receipt.reference_number ?? null,
+        description: receipt.description ?? null,
+        items: receipt.items || [],
+      }));
     }
 
     return res.json(parsed);
