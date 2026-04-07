@@ -9,7 +9,7 @@ A web application that helps users manage their finances, track debts, and impro
 - 📊 AI Insights dashboard  
 - 🎯 Savings goal tracking  
 - 💳 Debt tracker  
-- 📈 Trading simulation  
+- 📈 Economics trading simulation game 
 - ❤️ Debt health score  
 
 ---
